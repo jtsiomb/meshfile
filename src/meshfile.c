@@ -5,7 +5,7 @@
 #include <ctype.h>
 #include <float.h>
 #include <errno.h>
-#include "meshfmt.h"
+#include "meshfile.h"
 #include "rbtree.h"
 #include "dynarr.h"
 
@@ -28,6 +28,9 @@ static char *clean_line(char *s);
 static char *parse_face_vert(char *ptr, struct facevertex *fv, int numv, int numt, int numn);
 static int cmp_facevert(const void *ap, const void *bp);
 static void free_rbnode_key(struct rbnode *n, void *cls);
+
+static int write_material(const struct mf_material *mtl, const struct mf_userio *io);
+static int write_mesh(const struct mf_mesh *m, const struct mf_userio *io);
 
 static void *io_open(const char *fname, const char *mode);
 static void io_close(void *file);
@@ -533,7 +536,6 @@ static int load_mtl(struct mf_meshfile *mf, const struct mf_userio *io)
 	char *ptr, *cmd, *args;
 	int line_num = 0;
 	struct mf_material *mtl = 0;
-	int n;
 
 	while(io_fgets(buf, sizeof buf, io)) {
 		char *line = clean_line(buf);
@@ -709,11 +711,12 @@ int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io)
 {
 	int i;
 
+	/*
 	for(i=0; i<mf->num_mtl; i++) {
 		if(write_material(mf->mtl[i], io) == -1) {
 			return -1;
 		}
-	}
+	}*/
 
 	for(i=0; i<mf->num_meshes; i++) {
 		if(write_mesh(mf->meshes[i], io) == -1) {
@@ -725,6 +728,7 @@ int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io)
 
 static int write_material(const struct mf_material *mtl, const struct mf_userio *io)
 {
+	return -1;
 }
 
 static int write_mesh(const struct mf_mesh *m, const struct mf_userio *io)
@@ -741,6 +745,11 @@ static int write_mesh(const struct mf_mesh *m, const struct mf_userio *io)
 static void *io_open(const char *fname, const char *mode)
 {
 	return fopen(fname, mode);
+}
+
+static void io_close(void *file)
+{
+	fclose(file);
 }
 
 static int io_read(void *file, void *buf, int sz)

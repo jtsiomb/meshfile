@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <GL/glut.h>
 #include "imago2.h"
-#include "meshfmt.h"
+#include "meshfile.h"
 
 static void display(void);
 static void draw_mesh(struct mf_mesh *m);
@@ -33,9 +33,10 @@ int main(int argc, char **argv)
 	mf_aabox bbox;
 	float dx, dy, dz;
 
+	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
 	glutInitWindowSize(800, 600);
-	glutCreateWindow("foo");
+	glutCreateWindow("meshfile library test");
 
 	glutDisplayFunc(display);
 	glutReshapeFunc(reshape);
@@ -43,7 +44,7 @@ int main(int argc, char **argv)
 	glutMouseFunc(mouse);
 	glutMotionFunc(motion);
 
-	if(!(mf = mf_alloc()) || mf_load(mf, "test.obj") == -1) {
+	if(!(mf = mf_alloc()) || mf_load(mf, argv[1] ? argv[1] : "test.obj") == -1) {
 		fprintf(stderr, "failed to load test.obj\n");
 		return 1;
 	}
@@ -63,7 +64,7 @@ int main(int argc, char **argv)
 	/* load any textures */
 	for(i=0; i<mf_num_materials(mf); i++) {
 		mtl = mf_get_material(mf, i);
-		map = mtl->attr[MF_COLOR].map;
+		map = mtl->attr[MF_COLOR].map.name;
 
 		if(map && (pixels = img_load_pixels(map, &width, &height, IMG_FMT_RGBA32))) {
 			glGenTextures(1, &tex);

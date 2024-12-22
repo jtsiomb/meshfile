@@ -4,7 +4,7 @@ dep = $(src:.c=.d)
 bin = test
 
 CFLAGS = -pedantic -Wall -g -Iinclude -MMD
-LDFLAGS = -lGL -lGLU -lglut -lm
+LDFLAGS = -lGL -lGLU -lglut -limago -lm
 
 $(bin): $(obj)
 	$(CC) -o $@ $(obj) $(LDFLAGS)

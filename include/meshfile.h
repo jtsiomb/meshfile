@@ -33,7 +33,7 @@ enum mf_mtlattr_slot {
 	MF_TRANSMIT,	/* scalar: transmittance through material */
 	MF_IOR,			/* scalar: index of refraction */
 	MF_ALPHA,		/* scalar: 1 - transmit, value duplicate of color.w */
-	MF_BUMP,
+	MF_BUMP,		/* scalar: bump scale, where applicable */
 	MF_NUM_MTLATTR
 };
 
@@ -52,7 +52,7 @@ struct mf_texmap {
 struct mf_mtlattr {
 	enum mf_mtlattr_type type;
 	mf_vec4 val;
-	const char *map;
+	struct mf_texmap map;
 
 	void *udata;
 };
