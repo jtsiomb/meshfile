@@ -1,0 +1,6 @@
+*.o
+*.swp
+*.d
+test
+*.json
+.cache
