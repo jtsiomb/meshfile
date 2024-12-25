@@ -6,3 +6,7 @@ test
 .cache
 core
 *.obj
+*.a
+*.so.*
+*.lib
+*.dll
