@@ -4,3 +4,5 @@
 test
 *.json
 .cache
+core
+*.obj

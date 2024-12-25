@@ -2,42 +2,33 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <ctype.h>
 #include <float.h>
 #include <errno.h>
 #include "meshfile.h"
-#include "rbtree.h"
+#include "mfpriv.h"
 #include "dynarr.h"
 
-struct mf_meshfile {
-	char *name;
-	struct mf_mesh **meshes;
-	struct mf_material **mtl;
-	unsigned int num_meshes, max_meshes;
-	unsigned int num_mtl, max_mtl;
-	mf_aabox aabox;
-};
-
-struct facevertex {
-	int vidx, tidx, nidx;
-};
-
-static int mesh_done(struct mf_meshfile *mf, struct mf_mesh *mesh);
-static int load_mtl(struct mf_meshfile *mf, const struct mf_userio *io);
-static char *clean_line(char *s);
-static char *parse_face_vert(char *ptr, struct facevertex *fv, int numv, int numt, int numn);
-static int cmp_facevert(const void *ap, const void *bp);
-static void free_rbnode_key(struct rbnode *n, void *cls);
-
-static int write_material(const struct mf_material *mtl, const struct mf_userio *io);
-static int write_mesh(const struct mf_mesh *m, const struct mf_userio *io);
 
 static void *io_open(const char *fname, const char *mode);
 static void io_close(void *file);
 static int io_read(void *file, void *buf, int sz);
 static int io_write(void *file, void *buf, int sz);
-static int io_fgetc(const struct mf_userio *io);
-static char *io_fgets(char *buf, int sz, const struct mf_userio *io);
+
+static struct mf_material defmtl = {
+	"default material",
+	{
+		{MF_RGBA, {1, 1, 1, 1}, {0}, 0},
+		{MF_RGB},
+		{MF_SCALAR},
+		{MF_SCALAR, {1, 1, 1, 1}},
+		{MF_RGB},
+		{MF_SCALAR},
+		{MF_SCALAR},
+		{MF_SCALAR, {1.32}},
+		{MF_SCALAR, {1, 1, 1, 1}},
+		{MF_SCALAR}
+	}
+};
 
 
 struct mf_meshfile *mf_alloc(void)
@@ -64,6 +55,16 @@ void mf_free(struct mf_meshfile *mf)
 int mf_init(struct mf_meshfile *mf)
 {
 	memset(mf, 0, sizeof *mf);
+
+	if(!(mf->meshes = mf_dynarr_alloc(0, sizeof *mf->meshes))) {
+		return -1;
+	}
+	if(!(mf->mtl = mf_dynarr_alloc(0, sizeof *mf->mtl))) {
+		mf_dynarr_free(mf->meshes);
+		mf->meshes = 0;
+		return -1;
+	}
+
 	mf->aabox.vmin.x = mf->aabox.vmin.y = mf->aabox.vmin.z = FLT_MAX;
 	mf->aabox.vmax.x = mf->aabox.vmax.y = mf->aabox.vmax.z = -FLT_MAX;
 	return 0;
@@ -72,23 +73,24 @@ int mf_init(struct mf_meshfile *mf)
 void mf_destroy(struct mf_meshfile *mf)
 {
 	mf_clear(mf);
+	mf_dynarr_free(mf->meshes);
+	mf_dynarr_free(mf->mtl);
+	free(mf->name);
 }
 
 void mf_clear(struct mf_meshfile *mf)
 {
 	int i;
 
-	for(i=0; i<mf->num_meshes; i++) {
+	for(i=0; i<mf_dynarr_size(mf->meshes); i++) {
 		mf_free_mesh(mf->meshes[i]);
 	}
-	free(mf->meshes);
-	mf->meshes = 0;
+	mf->meshes = mf_dynarr_clear(mf->meshes);
 
-	for(i=0; i<mf->num_mtl; i++) {
+	for(i=0; i<mf_dynarr_size(mf->mtl); i++) {
 		mf_free_mtl(mf->mtl[i]);
 	}
-	free(mf->mtl);
-	mf->mtl = 0;
+	mf->mtl = mf_dynarr_clear(mf->mtl);
 }
 
 struct mf_mesh *mf_alloc_mesh(void)
@@ -114,17 +116,19 @@ void mf_free_mesh(struct mf_mesh *m)
 int mf_init_mesh(struct mf_mesh *m)
 {
 	memset(m, 0, sizeof *m);
+	m->mtl = &defmtl;
 	return 0;
 }
 
 void mf_destroy_mesh(struct mf_mesh *m)
 {
 	free(m->name);
-	free(m->vertex);
-	free(m->normal);
-	free(m->tangent);
-	free(m->texcoord);
-	free(m->color);
+	mf_dynarr_free(m->vertex);
+	mf_dynarr_free(m->normal);
+	mf_dynarr_free(m->tangent);
+	mf_dynarr_free(m->texcoord);
+	mf_dynarr_free(m->color);
+	mf_dynarr_free(m->faces);
 }
 
 struct mf_material *mf_alloc_mtl(void)
@@ -160,12 +164,12 @@ void mf_destroy_mtl(struct mf_material *mtl)
 
 int mf_num_meshes(const struct mf_meshfile *mf)
 {
-	return mf->num_meshes;
+	return mf_dynarr_size(mf->meshes);
 }
 
 int mf_num_materials(const struct mf_meshfile *mf)
 {
-	return mf->num_mtl;
+	return mf_dynarr_size(mf->mtl);
 }
 
 struct mf_mesh *mf_get_mesh(const struct mf_meshfile *mf, int idx)
@@ -180,8 +184,8 @@ struct mf_material *mf_get_material(const struct mf_meshfile *mf, int idx)
 
 struct mf_mesh *mf_find_mesh(const struct mf_meshfile *mf, const char *name)
 {
-	int i;
-	for(i=0; i<mf->num_meshes; i++) {
+	int i, num = mf_dynarr_size(mf->meshes);
+	for(i=0; i<num; i++) {
 		if(strcmp(mf->meshes[i]->name, name) == 0) {
 			return mf->meshes[i];
 		}
@@ -191,8 +195,8 @@ struct mf_mesh *mf_find_mesh(const struct mf_meshfile *mf, const char *name)
 
 struct mf_material *mf_find_material(const struct mf_meshfile *mf, const char *name)
 {
-	int i;
-	for(i=0; i<mf->num_mtl; i++) {
+	int i, num = mf_dynarr_size(mf->mtl);
+	for(i=0; i<num; i++) {
 		if(strcmp(mf->mtl[i]->name, name) == 0) {
 			return mf->mtl[i];
 		}
@@ -202,19 +206,9 @@ struct mf_material *mf_find_material(const struct mf_meshfile *mf, const char *n
 
 int mf_add_mesh(struct mf_meshfile *mf, struct mf_mesh *m)
 {
-	if(mf->num_meshes >= mf->max_meshes) {
-		unsigned int newsz;
-		struct mf_mesh **newarr;
-
-		newsz = mf->max_meshes ? mf->max_meshes * 2 : 8;
-		if(!(newarr = realloc(mf->meshes, newsz * sizeof *mf->meshes))) {
-			return -1;
-		}
-		mf->meshes = newarr;
-		mf->max_meshes = newsz;
+	if(!(mf->meshes = mf_dynarr_push(mf->meshes, &m))) {
+		return -1;
 	}
-
-	mf->meshes[mf->num_meshes++] = m;
 
 	if(m->aabox.vmin.x < mf->aabox.vmin.x) mf->aabox.vmin.x = m->aabox.vmin.x;
 	if(m->aabox.vmin.y < mf->aabox.vmin.y) mf->aabox.vmin.y = m->aabox.vmin.y;
@@ -227,19 +221,9 @@ int mf_add_mesh(struct mf_meshfile *mf, struct mf_mesh *m)
 
 int mf_add_material(struct mf_meshfile *mf, struct mf_material *mtl)
 {
-	if(mf->num_mtl >= mf->max_mtl) {
-		unsigned int newsz;
-		struct mf_material **newarr;
-
-		newsz = mf->max_mtl ? mf->max_mtl * 2 : 8;
-		if(!(newarr = realloc(mf->mtl, newsz * sizeof *mf->mtl))) {
-			return -1;
-		}
-		mf->mtl = newarr;
-		mf->max_mtl = newsz;
+	if(!(mf->mtl = mf_dynarr_push(mf->mtl, &mtl))) {
+		return -1;
 	}
-
-	mf->mtl[mf->num_mtl++] = mtl;
 	return 0;
 }
 
@@ -275,418 +259,7 @@ int mf_load(struct mf_meshfile *mf, const char *fname)
 
 int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io)
 {
-	char buf[128];
-	int result = -1;
-	int i, line_num = 0;
-	mf_vec3 *varr = 0, *narr = 0, *tarr = 0;
-	struct rbtree *rbtree = 0;
-	struct mf_mesh *mesh = 0;
-	char *mesh_name = 0;
-	struct mf_userio subio = {0};
-
-	subio.open = io->open;
-	subio.close = io->close;
-	subio.read = io->read;
-
-	if(!mf->name && !(mf->name = strdup("<unknown>"))) {
-		fprintf(stderr, "mf_load_userio: failed to allocate name\n");
-		return -1;
-	}
-	if(!(mesh_name = strdup(mf->name))) {
-		fprintf(stderr, "mf_load: failed to allocate mesh name\n");
-		goto end;
-	}
-
-	if(!(rbtree = rb_create(cmp_facevert))) {
-		fprintf(stderr, "mf_load: failed to create rbtree\n");
-		goto end;
-	}
-	rb_set_delete_func(rbtree, free_rbnode_key, 0);
-
-	if(!(varr = mf_dynarr_alloc(0, sizeof *varr)) ||
-			!(narr = mf_dynarr_alloc(0, sizeof *narr)) ||
-			!(tarr = mf_dynarr_alloc(0, sizeof *tarr))) {
-		fprintf(stderr, "mf_load: failed to allocate vertex attribute arrays\n");
-		goto end;
-	}
-
-	if(!(mesh = mf_alloc_mesh())) {
-		goto end;
-	}
-
-	while(io_fgets(buf, sizeof buf, io)) {
-		char *line = clean_line(buf);
-		++line_num;
-
-		if(!*line) continue;
-
-		switch(line[0]) {
-		case 'v':
-			if(isspace(line[1])) {
-				/* vertex */
-				mf_vec3 v;
-				int num;
-
-				num = sscanf(line + 2, "%f %f %f", &v.x, &v.y, &v.z);
-				if(num < 3) {
-					fprintf(stderr, "%s:%d: invalid vertex definition: \"%s\"\n", mf->name, line_num, line);
-					goto end;
-				}
-				if(!(varr = mf_dynarr_push(varr, &v))) {
-					fprintf(stderr, "mf_load: failed to resize vertex buffer\n");
-					goto end;
-				}
-
-			} else if(line[1] == 't' && isspace(line[2])) {
-				/* texcoord */
-				mf_vec2 tc;
-				if(sscanf(line + 3, "%f %f", &tc.x, &tc.y) != 2) {
-					fprintf(stderr, "%s:%d: invalid texcoord definition: \"%s\"\n", mf->name, line_num, line);
-					goto end;
-				}
-				tc.y = 1.0f - tc.y;
-				if(!(tarr = mf_dynarr_push(tarr, &tc))) {
-					fprintf(stderr, "mf_load: failed to resize texcoord buffer\n");
-					goto end;
-				}
-
-			} else if(line[1] == 'n' && isspace(line[2])) {
-				/* normal */
-				mf_vec3 norm;
-				if(sscanf(line + 3, "%f %f %f", &norm.x, &norm.y, &norm.z) != 3) {
-					fprintf(stderr, "%s:%d: invalid normal definition: \"%s\"\n", mf->name, line_num, line);
-					goto end;
-				}
-				if(!(narr = mf_dynarr_push(narr, &norm))) {
-					fprintf(stderr, "mf_load: failed to resize normal buffer\n");
-					goto end;
-				}
-			}
-			break;
-
-		case 'f':
-			if(isspace(line[1])) {
-				/* face */
-				char *ptr = line + 2;
-				struct facevertex fv;
-				mf_face face;
-				struct rbnode *node;
-				int vsz = mf_dynarr_size(varr);
-				int tsz = mf_dynarr_size(tarr);
-				int nsz = mf_dynarr_size(narr);
-
-				if(!vsz) {
-					fprintf(stderr, "%s:%d: encountered face before any vertices\n", mf->name, line_num);
-					goto end;
-				}
-
-				for(i=0; i<4; i++) {
-					if(!(ptr = parse_face_vert(ptr, &fv, vsz, tsz, nsz))) {
-						if(i < 3) {
-							fprintf(stderr, "%s:%d: invalid face definition: \"%s\"\n", mf->name, line_num, line);
-							goto end;
-						} else {
-							break;
-						}
-					}
-
-					if((node = rb_find(rbtree, &fv))) {
-						face.vidx[i] = (uintptr_t)node->data;
-					} else {
-						unsigned int newidx = mesh->num_verts;
-						struct facevertex *newfv;
-						mf_vec3 *vptr = varr + fv.vidx;
-
-						if(!(mesh->vertex = mf_dynarr_push(mesh->vertex, vptr))) {
-							fprintf(stderr, "mf_load: failed to resize vertex array\n");
-							goto end;
-						}
-						if(fv.nidx >= 0) {
-							if(!(mesh->normal = mf_dynarr_push(mesh->normal, narr + fv.nidx))) {
-								fprintf(stderr, "mf_load: failed to resize normal array\n");
-								goto end;
-							}
-						}
-						if(fv.tidx >= 0) {
-							if(!(mesh->texcoord = mf_dynarr_push(mesh->texcoord, tarr + fv.tidx))) {
-								fprintf(stderr, "mf_load: failed to resize texcoord array\n");
-								goto end;
-							}
-						}
-						face.vidx[i] = newidx;
-
-						if((newfv = malloc(sizeof *newfv))) {
-							*newfv = fv;
-						}
-						if(!newfv || rb_insert(rbtree, newfv, (void*)(uintptr_t)newidx) == -1) {
-							fprintf(stderr, "mf_load: failed to insert facevertex to the binary search tree\n");
-							goto end;
-						}
-					}
-				}
-
-				if(!(mesh->faces = mf_dynarr_push(mesh->faces, &face))) {
-					fprintf(stderr, "mf_load: failed to resize index array\n");
-					goto end;
-				}
-			}
-			break;
-
-		case 'o':
-			mesh->name = mesh_name;
-			if(mesh_done(mf, mesh) != -1 && !(mesh = mf_alloc_mesh())) {
-				fprintf(stderr, "mf_load: failed to allocate mesh\n");
-				goto end;
-			}
-			free(mesh->name);
-			if(!(mesh_name = strdup(clean_line(line + 2)))) {
-				fprintf(stderr, "mf_load: failed to allocate mesh name\n");
-				goto end;
-			}
-			break;
-
-		default:
-			if(memcmp(line, "mtllib", 6) == 0) {
-				char *mtl_fname = clean_line(line + 6);
-				if((subio.file = io->open(mtl_fname, "rb"))) {
-					load_mtl(mf, &subio);
-					io->close(subio.file);
-				} else {
-					fprintf(stderr, "mf_load: failed to open material library: %s, ignoring\n", mtl_fname);
-				}
-			} else if(memcmp(line, "usemtl", 6) == 0) {
-				mesh->mtl = mf_find_material(mf, clean_line(line + 6));
-			}
-			break;
-		}
-	}
-
-	mesh->name = mesh_name;
-	mesh_name = 0;
-	mesh_done(mf, mesh);
-
-	result = 0;	/* success */
-
-end:
-	mf_dynarr_free(varr);
-	mf_dynarr_free(narr);
-	mf_dynarr_free(tarr);
-	mf_free_mesh(mesh);
-	rb_free(rbtree);
-	return result;
-}
-
-static int mesh_done(struct mf_meshfile *mf, struct mf_mesh *mesh)
-{
-	if(mf_dynarr_empty(mesh->faces)) {
-		return -1;
-	}
-
-	if(mesh->normal) {
-		if(mf_dynarr_size(mesh->normal) != mf_dynarr_size(mesh->vertex)) {
-			fprintf(stderr, "mf_load: ignoring mesh with inconsistent attributes\n");
-			goto reset_mesh;
-		}
-		mesh->normal = mf_dynarr_finalize(mesh->normal);
-	}
-	if(mesh->texcoord) {
-		if(mf_dynarr_size(mesh->texcoord) != mf_dynarr_size(mesh->vertex)) {
-			fprintf(stderr, "mf_load: ignoring mesh with inconsistent attributes\n");
-			goto reset_mesh;
-		}
-		mesh->texcoord = mf_dynarr_finalize(mesh->texcoord);
-	}
-	mesh->vertex = mf_dynarr_finalize(mesh->vertex);
-
-	if(mf_add_mesh(mf, mesh) == -1) {
-		fprintf(stderr, "mf_load: failed to add mesh\n");
-		goto reset_mesh;
-	}
-	return 0;
-
-reset_mesh:
-	mf_destroy_mesh(mesh);
-	mf_init_mesh(mesh);
-	return -1;
-}
-
-static int parse_value(struct mf_mtlattr *attr, const char *args)
-{
-	int n;
-	mf_vec4 *valptr = &attr->val;
-	if((n = sscanf(args, "%f %f %f", &valptr->x, &valptr->y, &valptr->z)) != 3) {
-		if(n == 1) {
-			valptr->y = valptr->z = valptr->x;
-		} else {
-			fprintf(stderr, "ignoring invalid or unsupported mtl value: \"%s\"\n", args);
-			return -1;
-		}
-	}
-	return 0;
-}
-
-static int parse_map(struct mf_mtlattr *attr, const char *args)
-{
-	return 0;	/* TODO */
-}
-
-static int load_mtl(struct mf_meshfile *mf, const struct mf_userio *io)
-{
-	char buf[128];
-	char *ptr, *cmd, *args;
-	int line_num = 0;
-	struct mf_material *mtl = 0;
-
-	while(io_fgets(buf, sizeof buf, io)) {
-		char *line = clean_line(buf);
-		++line_num;
-
-		if(!*line) continue;
-
-		cmd = ptr = line;
-		while(*ptr && !isspace(*ptr)) ptr++;
-		args = *ptr ? clean_line(ptr + 1) : 0;
-		*ptr = 0;
-
-		if(strcmp(cmd, "newmtl") == 0) {
-			if(mtl) {
-				mf_add_material(mf, mtl);
-			}
-			if(!(mtl = mf_alloc_mtl()) || !(mtl->name = strdup(args))) {
-				fprintf(stderr, "failed to allocate material\n");
-				mf_free_mtl(mtl);
-				mtl = 0;
-				return -1;
-			}
-
-		} else if(strcmp(cmd, "Kd") == 0) {
-			if(!mtl) continue;
-			parse_value(mtl->attr + MF_COLOR, args);
-
-		} else if(strcmp(cmd, "Ks") == 0) {
-			if(!mtl) continue;
-			parse_value(mtl->attr + MF_SPECULAR, args);
-
-		} else if(strcmp(cmd, "Ns") == 0) {
-			if(!mtl) continue;
-			parse_value(mtl->attr + MF_SHININESS, args);
-			/* TODO compute roughness */
-
-		} else if(strcmp(cmd, "d") == 0) {
-			if(!mtl) continue;
-			if(parse_value(mtl->attr + MF_ALPHA, args) != -1) {
-				mtl->attr[MF_TRANSMIT].val.x = 1.0f - mtl->attr[MF_ALPHA].val.x;
-			}
-
-		} else if(strcmp(cmd, "Ni") == 0) {
-			if(!mtl) continue;
-			parse_value(mtl->attr + MF_IOR, args);
-
-		} else if(strcmp(cmd, "map_Kd") == 0) {
-			if(!mtl) continue;
-			parse_map(mtl->attr + MF_COLOR, args);
-
-		} else if(strcmp(cmd, "map_Ks") == 0) {
-			if(!mtl) continue;
-			parse_map(mtl->attr + MF_SHININESS, args);
-
-		} else if(strcmp(cmd, "map_d") == 0) {
-			if(!mtl) continue;
-			parse_map(mtl->attr + MF_ALPHA, args);
-
-		} else if(strcmp(cmd, "bump") == 0) {
-			if(!mtl) continue;
-			parse_map(mtl->attr + MF_BUMP, args);
-
-		} else if(strcmp(cmd, "refl") == 0) {
-			if(!mtl) continue;
-			parse_map(mtl->attr + MF_REFLECT, args);
-
-		}
-	}
-
-	if(mtl) {
-		mf_add_material(mf, mtl);
-	}
-	return 0;
-}
-
-static char *clean_line(char *s)
-{
-	char *end;
-
-	while(*s && isspace(*s)) ++s;
-	if(!*s) return 0;
-
-	end = s;
-	while(*end && *end != '#') ++end;
-	*end-- = 0;
-
-	while(end > s && isspace(*end)) {
-		*end-- = 0;
-	}
-
-	return s;
-}
-
-static char *parse_idx(char *ptr, int *idx, int arrsz)
-{
-	char *endp;
-	int val = strtol(ptr, &endp, 10);
-	if(endp == ptr) return 0;
-
-	if(val < 0) {	/* convert negative indices */
-		*idx = arrsz + val;
-	} else {
-		*idx = val - 1;	/* indices in obj are 1-based */
-	}
-	return endp;
-}
-
-/* possible face-vertex definitions:
- * 1. vertex
- * 2. vertex/texcoord
- * 3. vertex//normal
- * 4. vertex/texcoord/normal
- */
-static char *parse_face_vert(char *ptr, struct facevertex *fv, int numv, int numt, int numn)
-{
-	if(!(ptr = parse_idx(ptr, &fv->vidx, numv)))
-		return 0;
-	if(*ptr != '/') return (!*ptr || isspace(*ptr)) ? ptr : 0;
-
-	if(*++ptr == '/') {	/* no texcoord */
-		fv->tidx = -1;
-		++ptr;
-	} else {
-		if(!(ptr = parse_idx(ptr, &fv->tidx, numt)))
-			return 0;
-		if(*ptr != '/') return (!*ptr || isspace(*ptr)) ? ptr : 0;
-		++ptr;
-	}
-
-	if(!(ptr = parse_idx(ptr, &fv->nidx, numn)))
-		return 0;
-	return (!*ptr || isspace(*ptr)) ? ptr : 0;
-}
-
-static int cmp_facevert(const void *ap, const void *bp)
-{
-	const struct facevertex *a = ap;
-	const struct facevertex *b = bp;
-
-	if(a->vidx == b->vidx) {
-		if(a->tidx == b->tidx) {
-			return a->nidx - b->nidx;
-		}
-		return a->tidx - b->tidx;
-	}
-	return a->vidx - b->vidx;
-}
-
-static void free_rbnode_key(struct rbnode *n, void *cls)
-{
-	free(n->key);
+	return mf_load_obj(mf, io);
 }
 
 int mf_save(const struct mf_meshfile *mf, const char *fname)
@@ -709,34 +282,279 @@ int mf_save(const struct mf_meshfile *mf, const char *fname)
 
 int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io)
 {
-	int i;
+	return mf_save_obj(mf, io);
+}
 
-	/*
-	for(i=0; i<mf->num_mtl; i++) {
-		if(write_material(mf->mtl[i], io) == -1) {
+/* mesh functions */
+void mf_clear_mesh(struct mf_mesh *m)
+{
+	free(m->name);
+	mf_dynarr_free(m->vertex); m->vertex = 0;
+	mf_dynarr_free(m->normal); m->normal = 0;
+	mf_dynarr_free(m->tangent); m->tangent = 0;
+	mf_dynarr_free(m->texcoord); m->texcoord = 0;
+	mf_dynarr_free(m->color); m->color = 0;
+	mf_dynarr_free(m->faces); m->faces = 0;
+
+	m->aabox.vmin.x = m->aabox.vmin.y = m->aabox.vmin.z = FLT_MAX;
+	m->aabox.vmax.x = m->aabox.vmax.y = m->aabox.vmax.z = -FLT_MAX;
+
+	m->num_verts = m->num_faces = 0;
+}
+
+#define PUSH(arr, item) \
+	do { \
+		if(!(arr) && !((arr) = mf_dynarr_alloc(0, sizeof *(arr)))) { \
+			return -1; \
+		} \
+		if(!((arr) = mf_dynarr_push((arr), &(item)))) { \
+			return -1; \
+		} \
+	} while(0)
+
+
+int mf_add_vertex(struct mf_mesh *m, float x, float y, float z)
+{
+	mf_vec3 v;
+	v.x = x;
+	v.y = y;
+	v.z = z;
+	PUSH(m->vertex, v);
+	m->num_verts++;
+
+	if(x < m->aabox.vmin.x) m->aabox.vmin.x = x;
+	if(y < m->aabox.vmin.y) m->aabox.vmin.y = y;
+	if(z < m->aabox.vmin.z) m->aabox.vmin.z = z;
+	if(x > m->aabox.vmax.x) m->aabox.vmax.x = x;
+	if(y > m->aabox.vmax.y) m->aabox.vmax.y = y;
+	if(z > m->aabox.vmax.z) m->aabox.vmax.z = z;
+	return 0;
+}
+
+int mf_add_normal(struct mf_mesh *m, float x, float y, float z)
+{
+	mf_vec3 v;
+	v.x = x;
+	v.y = y;
+	v.z = z;
+	PUSH(m->normal, v);
+	return 0;
+}
+
+int mf_add_tangent(struct mf_mesh *m, float x, float y, float z)
+{
+	mf_vec3 v;
+	v.x = x;
+	v.y = y;
+	v.z = z;
+	PUSH(m->tangent, v);
+	return 0;
+}
+
+int mf_add_texcoord(struct mf_mesh *m, float x, float y)
+{
+	mf_vec2 v;
+	v.x = x;
+	v.y = y;
+	PUSH(m->texcoord, v);
+	return 0;
+}
+
+int mf_add_color(struct mf_mesh *m, float r, float g, float b, float a)
+{
+	mf_vec4 v;
+	v.x = r;
+	v.y = g;
+	v.z = b;
+	v.w = a;
+	PUSH(m->color, v);
+	return 0;
+}
+
+int mf_add_triangle(struct mf_mesh *m, int a, int b, int c)
+{
+	mf_face f;
+	f.vidx[0] = a;
+	f.vidx[1] = b;
+	f.vidx[2] = c;
+	PUSH(m->faces, f);
+	m->num_faces++;
+	return 0;
+}
+
+int mf_add_quad(struct mf_mesh *m, int a, int b, int c, int d)
+{
+	if(mf_add_triangle(m, a, b, c) == -1) return -1;
+	return mf_add_triangle(m, a, c, d);
+}
+
+enum {
+	NORMAL		= 1,
+	TANGENT		= 2,
+	TEXCOORD	= 4,
+	COLOR		= 8
+};
+
+#define IM_MAGIC	0xaaed55de
+struct immed {
+	unsigned int magic;
+	int prim, vnum;
+	void *orig_udata;
+	unsigned int attrmask;
+
+	mf_vec3 norm, tang;
+	mf_vec2 uv;
+	mf_vec4 col;
+};
+
+#define IMMED(m) \
+	(m)->udata; if(((struct immed*)(m)->udata)->magic != IM_MAGIC) return
+
+int mf_begin(struct mf_mesh *m, enum mf_primitive prim)
+{
+	struct immed *im;
+
+	if(!(im = calloc(1, sizeof *im))) {
+		return -1;
+	}
+	im->magic = IM_MAGIC;
+	im->prim = prim;
+	im->orig_udata = m->udata;
+
+	mf_clear_mesh(m);
+	m->udata = im;
+	return 0;
+}
+
+void mf_end(struct mf_mesh *m)
+{
+	struct immed *im = m->udata;
+	if(im->magic == IM_MAGIC) {
+		m->udata = im->orig_udata;
+		free(im);
+	}
+}
+
+int mf_vertex(struct mf_mesh *m, float x, float y, float z)
+{
+	int res;
+	unsigned int vidx;
+	struct immed *im = m->udata;
+	if(im->magic != IM_MAGIC) return -1;
+
+	if(mf_add_vertex(m, x, y, z) == -1) return -1;
+	if(im->attrmask & NORMAL) {
+		if(mf_add_normal(m, im->norm.x, im->norm.y, im->norm.z) == -1) {
 			return -1;
 		}
-	}*/
+	}
+	if(im->attrmask & TANGENT) {
+		if(mf_add_tangent(m, im->tang.x, im->tang.y, im->tang.z) == -1) {
+			return -1;
+		}
+	}
+	if(im->attrmask & TEXCOORD) {
+		if(mf_add_texcoord(m, im->uv.x, im->uv.y) == -1) {
+			return -1;
+		}
+	}
+	if(im->attrmask & COLOR) {
+		if(mf_add_color(m, im->col.x, im->col.y, im->col.z, im->col.w) == -1) {
+			return -1;
+		}
+	}
 
-	for(i=0; i<mf->num_meshes; i++) {
-		if(write_mesh(mf->meshes[i], io) == -1) {
+	if(++im->vnum >= im->prim) {
+		im->vnum = 0;
+		vidx = mf_dynarr_size(m->vertex) - im->prim;
+
+		if(im->prim == 4) {
+			res = mf_add_quad(m, vidx, vidx + 1, vidx + 2, vidx + 3);
+		} else {
+			res = mf_add_triangle(m, vidx, vidx + 1, vidx + 2);
+		}
+		if(res == -1) {
 			return -1;
 		}
 	}
 	return 0;
 }
 
-static int write_material(const struct mf_material *mtl, const struct mf_userio *io)
+void mf_normal(struct mf_mesh *m, float x, float y, float z)
 {
-	return -1;
+	struct immed *im = IMMED(m);
+	im->norm.x = x;
+	im->norm.y = y;
+	im->norm.z = z;
+	im->attrmask |= NORMAL;
 }
 
-static int write_mesh(const struct mf_mesh *m, const struct mf_userio *io)
+void mf_tangent(struct mf_mesh *m, float x, float y, float z)
 {
-	int i;
+	struct immed *im = IMMED(m);
+	im->tang.x = x;
+	im->tang.y = y;
+	im->tang.z = z;
+	im->attrmask |= TANGENT;
+}
 
-	for(i=0; i<m->num_verts; i++) {
-	}
+void mf_texcoord(struct mf_mesh *m, float u, float v)
+{
+	struct immed *im = IMMED(m);
+	im->uv.x = u;
+	im->uv.y = v;
+	im->attrmask |= TEXCOORD;
+}
+
+void mf_color(struct mf_mesh *m, float r, float g, float b, float a)
+{
+	struct immed *im = IMMED(m);
+	im->col.x = r;
+	im->col.y = g;
+	im->col.z = b;
+	im->col.w = a;
+	im->attrmask |= COLOR;
+}
+
+void mf_vertexv(struct mf_mesh *m, float *v)
+{
+	mf_vertex(m, v[0], v[1], v[2]);
+}
+
+void mf_normalv(struct mf_mesh *m, float *v)
+{
+	struct immed *im = IMMED(m);
+	im->norm.x = v[0];
+	im->norm.y = v[1];
+	im->norm.z = v[2];
+	im->attrmask |= NORMAL;
+}
+
+void mf_tangentv(struct mf_mesh *m, float *v)
+{
+	struct immed *im = IMMED(m);
+	im->tang.x = v[0];
+	im->tang.y = v[1];
+	im->tang.z = v[2];
+	im->attrmask |= TANGENT;
+}
+
+void mf_texcooordv(struct mf_mesh *m, float *v)
+{
+	struct immed *im = IMMED(m);
+	im->uv.x = v[0];
+	im->uv.y = v[1];
+	im->attrmask |= TEXCOORD;
+}
+
+void mf_colorv(struct mf_mesh *m, float *v)
+{
+	struct immed *im = IMMED(m);
+	im->col.x = v[0];
+	im->col.y = v[1];
+	im->col.z = v[2];
+	im->col.w = v[3];
+	im->attrmask |= COLOR;
 }
 
 
@@ -766,7 +584,7 @@ static int io_write(void *file, void *buf, int sz)
 	return wrbytes;
 }
 
-static int io_fgetc(const struct mf_userio *io)
+int mf_fgetc(const struct mf_userio *io)
 {
 	unsigned char c;
 	if(io_read(io->file, &c, 1) == -1) {
@@ -775,11 +593,11 @@ static int io_fgetc(const struct mf_userio *io)
 	return c;
 }
 
-static char *io_fgets(char *buf, int sz, const struct mf_userio *io)
+char *mf_fgets(char *buf, int sz, const struct mf_userio *io)
 {
 	int c;
 	char *dest = buf;
-	while(sz > 1 && (c = io_fgetc(io)) != -1) {
+	while(sz > 1 && (c = mf_fgetc(io)) != -1) {
 		*dest++ = c;
 		if(c == '\n') break;
 	}

@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <assert.h>
 #include <GL/glut.h>
 #include "imago2.h"
 #include "meshfile.h"
 
+static int init(void);
+static void cleanup(void);
 static void display(void);
 static void draw_mesh(struct mf_mesh *m);
 static void setup_material(struct mf_material *mtl);
@@ -13,7 +16,9 @@ static void reshape(int x, int y);
 static void keypress(unsigned char key, int x, int y);
 static void mouse(int bn, int st, int x, int y);
 static void motion(int x, int y);
+static int parse_args(int argc, char **argv);
 
+static const char *fname;
 static int win_width, win_height;
 static float cam_theta, cam_phi, cam_dist;
 static float znear = 0.5, zfar = 500.0;
@@ -25,15 +30,12 @@ static struct mf_meshfile *mf;
 
 int main(int argc, char **argv)
 {
-	int i, width, height;
-	unsigned int tex;
-	void *pixels;
-	struct mf_material *mtl;
-	const char *map;
-	mf_aabox bbox;
-	float dx, dy, dz;
-
 	glutInit(&argc, argv);
+
+	if(parse_args(argc, argv) == -1) {
+		return 1;
+	}
+
 	glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
 	glutInitWindowSize(800, 600);
 	glutCreateWindow("meshfile library test");
@@ -44,17 +46,43 @@ int main(int argc, char **argv)
 	glutMouseFunc(mouse);
 	glutMotionFunc(motion);
 
-	if(!(mf = mf_alloc()) || mf_load(mf, argv[1] ? argv[1] : "test.obj") == -1) {
-		fprintf(stderr, "failed to load test.obj\n");
+	if(init() == -1) {
 		return 1;
 	}
+	atexit(cleanup);
+
+	glutMainLoop();
+	return 0;
+}
+
+static int init(void)
+{
+	int i, width, height;
+	unsigned int tex;
+	void *pixels;
+	struct mf_material *mtl;
+	const char *map;
+	mf_aabox bbox;
+	float dx, dy, dz;
+
+	if(!fname) {
+		fprintf(stderr, "pass mesh file to open\n");
+		return -1;
+	}
+
+	if(!(mf = mf_alloc()) || mf_load(mf, fname) == -1) {
+		fprintf(stderr, "failed to load test.obj\n");
+		return -1;
+	}
 	mf_bounds(mf, &bbox);
+	printf("bounds: %f,%f,%f -> %f,%f,%f\n", bbox.vmin.x, bbox.vmin.y, bbox.vmin.z,
+			bbox.vmax.x, bbox.vmax.y, bbox.vmax.z);
 
 	dx = bbox.vmax.x - bbox.vmin.x;
 	dy = bbox.vmax.y - bbox.vmin.y;
 	dz = bbox.vmax.z - bbox.vmin.z;
 
-	cam_dist = sqrt(dx * dx + dy * dy + dz * dz) * 1.5f;
+	cam_dist = sqrt(dx * dx + dy * dy + dz * dz) * 0.75f;
 	zfar = cam_dist * 4.0f;
 	znear = zfar * 0.001;
 	if(znear < 0.1) znear = 0.1;
@@ -83,8 +111,12 @@ int main(int argc, char **argv)
 	glEnable(GL_LIGHTING);
 	glEnable(GL_LIGHT0);
 
-	glutMainLoop();
 	return 0;
+}
+
+static void cleanup(void)
+{
+	mf_free(mf);
 }
 
 static void display(void)
@@ -119,10 +151,11 @@ static void draw_mesh(struct mf_mesh *m)
 		dlist = glGenLists(1);
 		glNewList(dlist, GL_COMPILE);
 
+		glBegin(GL_TRIANGLES);
 		if(m->faces) {
 			for(i=0; i<m->num_faces; i++) {
 				f = m->faces + i;
-				for(j=0; j<f->nverts; j++) {
+				for(j=0; j<3; j++) {
 					vidx = f->vidx[j];
 					if(m->normal) {
 						glNormal3fv(&m->normal[vidx].x);
@@ -150,6 +183,7 @@ static void draw_mesh(struct mf_mesh *m)
 				glVertex3fv(&m->vertex[i].x);
 			}
 		}
+		glEnd();
 		glEndList();
 		m->udata = (void*)(intptr_t)dlist;
 	}
@@ -236,4 +270,31 @@ static void motion(int x, int y)
 		if(cam_dist < 0) cam_dist = 0;
 		glutPostRedisplay();
 	}
+}
+
+static int parse_args(int argc, char **argv)
+{
+	int i;
+	static const char *usage_fmt = "Usage: %s [options] <mesh file>\n"
+		"Options:\n"
+		" -h,-help: print usage and exit\n";
+
+	for(i=1; i<argc; i++) {
+		if(argv[i][0] == '-') {
+			if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-help") == 0) {
+				printf(usage_fmt, argv[0]);
+				exit(0);
+			} else {
+				fprintf(stderr, "invalid option: %s\n", argv[i]);
+				return -1;
+			}
+		} else {
+			if(fname) {
+				fprintf(stderr, "unexpected argument: %s\n", argv[i]);
+				return -1;
+			}
+			fname = argv[i];
+		}
+	}
+	return 0;
 }

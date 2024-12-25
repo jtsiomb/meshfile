@@ -14,9 +14,7 @@ typedef struct mf_vec4 {
 } mf_vec4;
 
 typedef struct mf_face {
-	unsigned int vidx[4];
-	int nverts;
-	mf_vec3 normal;
+	unsigned int vidx[3];
 } mf_face;
 
 typedef struct mf_aabox {
@@ -38,8 +36,9 @@ enum mf_mtlattr_slot {
 };
 
 enum mf_mtlattr_type { MF_SCALAR = 1, MF_RGB = 3, MF_RGBA = 4 };
-enum mf_texfilter { TEX_NEAREST, TEX_LINEAR };
-enum mf_texwrap { TEX_REPEAT, TEX_CLAMP };
+enum mf_texfilter { MF_TEX_NEAREST, MF_TEX_LINEAR };
+enum mf_texwrap { MF_TEX_REPEAT, MF_TEX_CLAMP };
+enum mf_primitive { MF_TRIANGLES = 3, MF_QUADS = 4 };
 
 struct mf_texmap {
 	const char *name;		/* for 2D maps */
@@ -126,5 +125,29 @@ int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io);
 
 int mf_save(const struct mf_meshfile *mf, const char *fname);
 int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io);
+
+/* mesh functions */
+void mf_clear_mesh(struct mf_mesh *m);
+
+int mf_add_vertex(struct mf_mesh *m, float x, float y, float z);
+int mf_add_normal(struct mf_mesh *m, float x, float y, float z);
+int mf_add_tangent(struct mf_mesh *m, float x, float y, float z);
+int mf_add_texcoord(struct mf_mesh *m, float u, float v);
+int mf_add_color(struct mf_mesh *m, float r, float g, float b, float a);
+int mf_add_triangle(struct mf_mesh *m, int a, int b, int c);
+int mf_add_quad(struct mf_mesh *m, int a, int b, int c, int d);
+
+int mf_begin(struct mf_mesh *m, enum mf_primitive prim);
+void mf_end(struct mf_mesh *m);
+int mf_vertex(struct mf_mesh *m, float x, float y, float z);
+void mf_normal(struct mf_mesh *m, float x, float y, float z);
+void mf_tangent(struct mf_mesh *m, float x, float y, float z);
+void mf_texcoord(struct mf_mesh *m, float u, float v);
+void mf_color(struct mf_mesh *m, float r, float g, float b, float a);
+void mf_vertexv(struct mf_mesh *m, float *v);
+void mf_normalv(struct mf_mesh *m, float *v);
+void mf_tangentv(struct mf_mesh *m, float *v);
+void mf_texcooordv(struct mf_mesh *m, float *v);
+void mf_colorv(struct mf_mesh *m, float *v);
 
 #endif	/* MESHFILE_H_ */
