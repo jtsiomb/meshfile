@@ -412,6 +412,15 @@ invalopt:		fprintf(stderr, "ignoring invalid %s option in map: %s\n", arg, val);
 			}
 		}
 	}
+
+	memset(map->xform, 0, sizeof map->xform);
+	map->xform[0] = scale.x;
+	map->xform[5] = scale.y;
+	map->xform[10] = scale.z;
+	map->xform[15] = 1;
+	map->xform[12] = pos.x;
+	map->xform[13] = pos.y;
+	map->xform[14] = pos.z;
 	return 0;
 }
 
