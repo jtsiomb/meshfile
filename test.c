@@ -24,7 +24,7 @@ static float cam_theta, cam_phi, cam_dist;
 static float znear = 0.5, zfar = 500.0;
 static int mouse_x, mouse_y;
 static int bnstate[8];
-static int use_tex;
+static int use_tex = 1;
 static struct mf_meshfile *mf;
 
 

@@ -308,12 +308,25 @@ static int parse_bool(const char *s)
 	return -1;
 }
 
+static int parse_float(const char *s, float *ret)
+{
+	char *endp;
+	float x = strtod(s, &endp);
+	if(endp == s) return -1;
+	*ret = x;
+	return 0;
+}
+
 static int parse_map(struct mf_mtlattr *attr, char *args)
 {
-	char *arg, *val, *endp;
+	static const char *facename[] = {"cube_top", "cube_bottom", "cube_front",
+		"cube_back", "cube_left", "cube_right"};
+	int i, cubeface = -1;
+	char *arg, *val, *prev;
 	char *file = 0;
 	int bval;
 	float fval;
+	mf_vec3 pos = {0, 0, 0}, scale = {1, 1, 1};
 	struct mf_texmap *map = &attr->map;
 
 	while((arg = nextarg(&args))) {
@@ -339,27 +352,63 @@ invalopt:		fprintf(stderr, "ignoring invalid %s option in map: %s\n", arg, val);
 					fprintf(stderr, "ignoring -bm option in non-bump attribute\n");
 					continue;
 				}
-				fval = strtod(val, &endp);
-				if(endp == val) {
+				if(parse_float(val, &fval) == -1) {
 					fprintf(stderr, "ignoring invalid -bm value: %s\n", val);
 					continue;
 				}
 				attr->val.x = attr->val.y = attr->val.z = fval;
 
-			} else if(strcmp(arg, "-o") == 0) {
-				/* TODO */
+			} else if(strcmp(arg, "-o") == 0 || strcmp(arg, "-s") == 0) {
+				mf_vec3 *vptr = arg[1] == '0' ? &pos : &scale;
+				if(parse_float(val, &vptr->x) == -1) {
+					fprintf(stderr, "ignoring invalid %s value: %s\n", arg, val);
+					continue;
+				}
+				prev = args;
+				val = nextarg(&args);
+				if(parse_float(val, &vptr->y) == -1) {
+					args = prev;
+					continue;
+				}
+				prev = args;
+				val = nextarg(&args);
+				if(parse_float(val, &vptr->z) == -1) {
+					args = prev;
+					continue;
+				}
+
+			} else if(strcmp(arg, "-type") == 0 && attr->type == MF_REFLECT) {
+				cubeface = -1;
+				for(i=0; i<6; i++) {
+					if(strcmp(val, facename[i]) == 0) {
+						cubeface = i;
+						break;
+					}
+				}
+
 			}
+
 
 		} else {
-			if(file) {
-				fprintf(stderr, "unexpected map argument: %s\n", arg);
-				continue;
-			}
-
-			file = arg;
-			if(!(map->name = strdup(file))) {
-				fprintf(stderr, "failed to allocate map name: %s\n", file);
-				return -1;
+			if(cubeface == -1) {
+				if(map->name) {
+					fprintf(stderr, "unexpected map argument: %s\n", arg);
+					continue;
+				}
+				if(!(map->name = strdup(arg))) {
+					fprintf(stderr, "failed to allocate map name: %s\n", arg);
+					continue;
+				}
+			} else {
+				if(map->cube[cubeface]) {
+					fprintf(stderr, "attempt to set cube[%s] twice ignored (%s)\n", facename[cubeface], file);
+					continue;
+				}
+				if(!(map->cube[cubeface] = file = strdup(arg))) {
+					fprintf(stderr, "failed to allocate cubemap name: %s\n", arg);
+					continue;
+				}
+				cubeface = -1;
 			}
 		}
 	}
@@ -430,7 +479,7 @@ static int load_mtl(struct mf_meshfile *mf, const struct mf_userio *io)
 			if(!mtl) continue;
 			parse_map(mtl->attr + MF_ALPHA, args);
 
-		} else if(strcmp(cmd, "bump") == 0) {
+		} else if(strcmp(cmd, "bump") == 0 || strcmp(cmd, "map_bump") == 0) {
 			if(!mtl) continue;
 			parse_map(mtl->attr + MF_BUMP, args);
 
