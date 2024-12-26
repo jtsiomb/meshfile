@@ -290,9 +290,83 @@ static int parse_value(struct mf_mtlattr *attr, const char *args)
 	return 0;
 }
 
-static int parse_map(struct mf_mtlattr *attr, const char *args)
+static char *nextarg(char **s)
 {
-	return 0;	/* TODO */
+	char *arg, *end = *s;
+
+	if(!*s || !**s) return 0;
+
+	while(*end && !isspace(*end)) end++;
+	while(*end && isspace(*end)) *end++ = 0;
+
+	arg = *s;
+	*s = end;
+	return arg;
+}
+
+static int parse_bool(const char *s)
+{
+	if(strcmp(s, "on") == 0) return 1;
+	if(strcmp(s, "off") == 0) return 0;
+	return -1;
+}
+
+static int parse_map(struct mf_mtlattr *attr, char *args)
+{
+	char *arg, *val, *endp;
+	char *file = 0;
+	int bval;
+	float fval;
+	struct mf_texmap *map = &attr->map;
+
+	while((arg = nextarg(&args))) {
+		if(arg[0] == '-') {
+			if(!(val = nextarg(&args))) {
+invalopt:		fprintf(stderr, "ignoring invalid %s option in map: %s\n", arg, val);
+				continue;
+			}
+			if(strcmp(arg, "-blendu") == 0) {
+				if((bval = parse_bool(val)) == -1) goto invalopt;
+				map->ufilt = bval ? MF_TEX_LINEAR : MF_TEX_NEAREST;
+
+			} else if(strcmp(arg, "-blendv") == 0) {
+				if((bval = parse_bool(val)) == -1) goto invalopt;
+				map->vfilt = bval ? MF_TEX_LINEAR : MF_TEX_NEAREST;
+
+			} else if(strcmp(arg, "-clamp") == 0) {
+				if((bval = parse_bool(val)) == -1) goto invalopt;
+				map->uwrap = map->vwrap = bval ? MF_TEX_CLAMP : MF_TEX_REPEAT;
+
+			} else if(strcmp(arg, "-bm") == 0) {
+				if(attr->type != MF_BUMP) {
+					fprintf(stderr, "ignoring -bm option in non-bump attribute\n");
+					continue;
+				}
+				fval = strtod(val, &endp);
+				if(endp == val) {
+					fprintf(stderr, "ignoring invalid -bm value: %s\n", val);
+					continue;
+				}
+				attr->val.x = attr->val.y = attr->val.z = fval;
+
+			} else if(strcmp(arg, "-o") == 0) {
+				/* TODO */
+			}
+
+		} else {
+			if(file) {
+				fprintf(stderr, "unexpected map argument: %s\n", arg);
+				continue;
+			}
+
+			file = arg;
+			if(!(map->name = strdup(file))) {
+				fprintf(stderr, "failed to allocate map name: %s\n", file);
+				return -1;
+			}
+		}
+	}
+	return 0;
 }
 
 static int load_mtl(struct mf_meshfile *mf, const struct mf_userio *io)

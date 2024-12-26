@@ -21,7 +21,7 @@ typedef struct mf_aabox {
 	mf_vec3 vmin, vmax;
 } mf_aabox;
 
-enum mf_mtlattr_slot {
+enum mf_mtlattr_type {
 	MF_COLOR,		/* RGBA: base color/albedo/diffuse */
 	MF_SPECULAR,	/* RGB: phong/blinn specular color */
 	MF_SHININESS,	/* scalar: phong/blinn specular exponent */
@@ -35,7 +35,6 @@ enum mf_mtlattr_slot {
 	MF_NUM_MTLATTR
 };
 
-enum mf_mtlattr_type { MF_SCALAR = 1, MF_RGB = 3, MF_RGBA = 4 };
 enum mf_texfilter { MF_TEX_NEAREST, MF_TEX_LINEAR };
 enum mf_texwrap { MF_TEX_REPEAT, MF_TEX_CLAMP };
 enum mf_primitive { MF_TRIANGLES = 3, MF_QUADS = 4 };

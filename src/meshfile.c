@@ -17,16 +17,16 @@ static int io_write(void *file, void *buf, int sz);
 static struct mf_material defmtl = {
 	"default material",
 	{
-		{MF_RGBA, {1, 1, 1, 1}, {0}, 0},
-		{MF_RGB},
-		{MF_SCALAR},
-		{MF_SCALAR, {1, 1, 1, 1}},
-		{MF_RGB},
-		{MF_SCALAR},
-		{MF_SCALAR},
-		{MF_SCALAR, {1.32}},
-		{MF_SCALAR, {1, 1, 1, 1}},
-		{MF_SCALAR}
+		{MF_COLOR, {1, 1, 1, 1}, {0}, 0},
+		{MF_SPECULAR},
+		{MF_SHININESS},
+		{MF_ROUGHNESS, {1, 1, 1, 1}},
+		{MF_EMISSIVE},
+		{MF_REFLECT},
+		{MF_TRANSMIT},
+		{MF_IOR, {1.32}},
+		{MF_ALPHA, {1, 1, 1, 1}},
+		{MF_BUMP}
 	}
 };
 
