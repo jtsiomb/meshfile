@@ -9,6 +9,8 @@
 #include "dynarr.h"
 
 
+static void assetpath_rbdelnode(struct rbnode *n, void *cls);
+
 static void *io_open(const char *fname, const char *mode);
 static void io_close(void *file);
 static int io_read(void *file, void *buf, int sz);
@@ -65,6 +67,13 @@ int mf_init(struct mf_meshfile *mf)
 		return -1;
 	}
 
+	if(!(mf->assetpath = rb_create(RB_KEY_STRING))) {
+		mf_dynarr_free(mf->meshes);
+		mf_dynarr_free(mf->mtl);
+		return -1;
+	}
+	rb_set_delete_func(mf->assetpath, assetpath_rbdelnode, 0);
+
 	mf->aabox.vmin.x = mf->aabox.vmin.y = mf->aabox.vmin.z = FLT_MAX;
 	mf->aabox.vmax.x = mf->aabox.vmax.y = mf->aabox.vmax.z = -FLT_MAX;
 	return 0;
@@ -76,6 +85,8 @@ void mf_destroy(struct mf_meshfile *mf)
 	mf_dynarr_free(mf->meshes);
 	mf_dynarr_free(mf->mtl);
 	free(mf->name);
+	free(mf->dirname);
+	rb_free(mf->assetpath);
 }
 
 void mf_clear(struct mf_meshfile *mf)
@@ -91,6 +102,8 @@ void mf_clear(struct mf_meshfile *mf)
 		mf_free_mtl(mf->mtl[i]);
 	}
 	mf->mtl = mf_dynarr_clear(mf->mtl);
+
+	rb_clear(mf->assetpath);
 }
 
 struct mf_mesh *mf_alloc_mesh(void)
@@ -153,7 +166,7 @@ void mf_free_mtl(struct mf_material *mtl)
 
 int mf_init_mtl(struct mf_material *mtl)
 {
-	memset(mtl, 0, sizeof *mtl);
+	memcpy(mtl, &defmtl, sizeof *mtl);
 	return 0;
 }
 
@@ -240,6 +253,7 @@ int mf_load(struct mf_meshfile *mf, const char *fname)
 {
 	int res;
 	FILE *fp;
+	char *slash;
 	struct mf_userio io = {0};
 
 	if(!(fp = fopen(fname, "rb"))) {
@@ -252,6 +266,11 @@ int mf_load(struct mf_meshfile *mf, const char *fname)
 	io.read = io_read;
 
 	mf->name = strdup(fname);
+	if((slash = strrchr(fname, '/')) && (mf->dirname = strdup(fname))) {
+		slash = mf->dirname + (slash - fname);
+		*slash = 0;
+	}
+
 	res = mf_load_userio(mf, &io);
 	fclose(fp);
 	return res;
@@ -557,6 +576,51 @@ void mf_colorv(struct mf_mesh *m, float *v)
 	im->attrmask |= COLOR;
 }
 
+/* utility functions */
+const char *mf_find_asset(const struct mf_meshfile *mf, const char *fname)
+{
+	struct rbnode *rbn;
+	char *key, *pathbuf;
+	FILE *fp;
+
+	if(!mf->dirname) {
+		return fname;
+	}
+
+	if((rbn = rb_find(mf->assetpath, (void*)fname))) {
+		return rbn->data;
+	}
+
+	if(!(key = strdup(fname))) {
+		return fname;
+	}
+	if(!(pathbuf = malloc(strlen(fname) + strlen(mf->dirname) + 2))) {
+		return fname;
+	}
+
+	sprintf(pathbuf, "%s/%s", mf->dirname, fname);
+	if((fp = fopen(pathbuf, "r"))) {
+		fclose(fp);
+		rb_insert(mf->assetpath, key, pathbuf);
+		return pathbuf;
+	}
+
+	strcpy(pathbuf, fname);
+	if((fp = fopen(pathbuf, "r"))) {
+		fclose(fp);
+		rb_insert(mf->assetpath, key, pathbuf);
+		return pathbuf;
+	}
+
+	return fname;
+}
+
+static void assetpath_rbdelnode(struct rbnode *n, void *cls)
+{
+	free(n->key);
+	free(n->data);
+}
+
 
 /* file I/O functions */
 
@@ -607,4 +671,3 @@ char *mf_fgets(char *buf, int sz, const struct mf_userio *io)
 	*dest = 0;
 	return buf;
 }
-

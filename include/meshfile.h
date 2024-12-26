@@ -149,4 +149,7 @@ void mf_tangentv(struct mf_mesh *m, float *v);
 void mf_texcooordv(struct mf_mesh *m, float *v);
 void mf_colorv(struct mf_mesh *m, float *v);
 
+/* utility functions */
+const char *mf_find_asset(const struct mf_meshfile *mf, const char *fname);
+
 #endif	/* MESHFILE_H_ */

@@ -8,6 +8,8 @@ the terms of the 3-clause BSD license. See COPYING for details.
 #ifndef RBTREE_H_
 #define RBTREE_H_
 
+#include <stddef.h>
+
 struct rbtree;
 
 

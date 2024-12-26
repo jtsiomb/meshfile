@@ -92,9 +92,14 @@ static int init(void)
 	/* load any textures */
 	for(i=0; i<mf_num_materials(mf); i++) {
 		mtl = mf_get_material(mf, i);
-		map = mtl->attr[MF_COLOR].map.name;
+		if((map = mf_find_asset(mf, mtl->attr[MF_COLOR].map.name))) {
 
-		if(map && (pixels = img_load_pixels(map, &width, &height, IMG_FMT_RGBA32))) {
+			if(!(pixels = img_load_pixels(map, &width, &height, IMG_FMT_RGBA32))) {
+				fprintf(stderr, "failed to load texture: %s\n", map);
+				continue;
+			}
+			printf("loaded texture: %s\n", map);
+
 			glGenTextures(1, &tex);
 			glBindTexture(GL_TEXTURE_2D, tex);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -228,6 +233,7 @@ static void keypress(unsigned char key, int x, int y)
 
 	case 't':
 		use_tex ^= 1;
+		glutPostRedisplay();
 		break;
 
 	default:

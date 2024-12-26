@@ -189,6 +189,7 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 			break;
 
 		case 'o':
+		case 'g':
 			mesh->name = mesh_name;
 			if(mesh_done(mf, mesh) != -1 && !(mesh = mf_alloc_mesh())) {
 				fprintf(stderr, "mf_load: failed to allocate mesh\n");
@@ -202,24 +203,20 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 
 		default:
 			if(memcmp(line, "mtllib", 6) == 0) {
-				char *slash, *path;
-				char *mtl_fname = clean_line(line + 6);
-				if((slash = strrchr(mf->name, '/')) &&
-						(path = malloc(strlen(mf->name) + strlen(mtl_fname)))) {
-					memcpy(path, mf->name, slash - mf->name + 1);
-					strcpy(path + (slash - mf->name + 1), mtl_fname);
-				} else {
-					path = mtl_fname;
+				const char *mtlfile = clean_line(line + 6);
+				if(!mtlfile) {
+					fprintf(stderr, "mf_load: ignoring invalid mtllib\n");
+					continue;
 				}
-				if((subio.file = io->open(path, "rb"))) {
+				mtlfile = mf_find_asset(mf, mtlfile);
+
+				if((subio.file = io->open(mtlfile, "rb"))) {
 					load_mtl(mf, &subio);
 					io->close(subio.file);
 				} else {
-					fprintf(stderr, "mf_load: failed to open material library: %s, ignoring\n", path);
+					fprintf(stderr, "mf_load: failed to open material library: %s, ignoring\n", mtlfile);
 				}
-				if(path != mtl_fname) {
-					free(path);
-				}
+
 			} else if(memcmp(line, "usemtl", 6) == 0) {
 				struct mf_material *mtl = mf_find_material(mf, clean_line(line + 6));
 				if(mtl) mesh->mtl = mtl;

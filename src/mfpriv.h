@@ -2,12 +2,16 @@
 #define MFPRIV_H_
 
 #include "meshfile.h"
+#include "rbtree.h"
 
 struct mf_meshfile {
 	char *name;
+	char *dirname;
 	struct mf_mesh **meshes;
 	struct mf_material **mtl;
 	mf_aabox aabox;
+
+	struct rbtree *assetpath;
 };
 
 int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io);
