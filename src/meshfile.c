@@ -583,7 +583,7 @@ const char *mf_find_asset(const struct mf_meshfile *mf, const char *fname)
 	char *key, *pathbuf;
 	FILE *fp;
 
-	if(!mf->dirname) {
+	if(!fname || !mf->dirname) {
 		return fname;
 	}
 

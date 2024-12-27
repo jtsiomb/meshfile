@@ -10,3 +10,4 @@ core
 *.so.*
 *.lib
 *.dll
+meshview

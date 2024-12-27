@@ -92,6 +92,7 @@ static int init(void)
 	/* load any textures */
 	for(i=0; i<mf_num_materials(mf); i++) {
 		mtl = mf_get_material(mf, i);
+		if(!mtl->attr[MF_COLOR].map.name) continue;
 		if((map = mf_find_asset(mf, mtl->attr[MF_COLOR].map.name))) {
 
 			if(!(pixels = img_load_pixels(map, &width, &height, IMG_FMT_RGBA32))) {
