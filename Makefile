@@ -11,35 +11,34 @@ liba = libmeshfile.a
 ldname = libmeshfile.so
 soname = $(ldname).$(somajor)
 libso = $(ldname).$(somajor).$(sominor)
+shared = -shared -Wl,-soname,$(soname)
 
 libdir = lib
-bin = test
 
 CFLAGS = -pedantic -Wall -g -fPIC -Iinclude -MMD
-LDFLAGS = -limago
-test_LDFLAGS = $(liba) -lGL -lGLU -lglut -limago -lm
+
 
 .PHONY: all
-all: $(libso) $(liba) $(bin)
+all: $(libso) $(liba) meshview/meshview
 
 $(libso): $(obj)
-	$(CC) -o $@ -shared -Wl,-soname,$(soname) $(LDFLAGS)
+	$(CC) -o $@ $(shared) $(LDFLAGS)
 
 $(liba): $(obj)
 	$(AR) rcs $@ $(obj)
 
-$(bin): test.o $(liba)
-	$(CC) -o $@ test.o $(test_LDFLAGS)
+meshview/meshview: meshview/meshview.c $(libso)
+	$(MAKE) -C meshview
 
 -include $(dep)
 
 .PHONY: clean
 clean:
-	rm -f $(obj) test.o $(bin)
+	rm -f $(obj) $(bin)
 
 .PHONY: cleandep
 cleandep:
-	rm -f $(dep) test.d
+	rm -f $(dep)
 
 .PHONY: install
 install: $(liba)
@@ -58,3 +57,12 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(libso)
 	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(soname)
 	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname)
+
+
+.PHONY: meshview
+meshview: $(libso)
+	$(MAKE) -C meshview
+
+.PHONY: clean-meshview
+clean-meshview: $(libso)
+	$(MAKE) -C meshview clean

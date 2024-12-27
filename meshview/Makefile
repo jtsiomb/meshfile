@@ -4,8 +4,8 @@ obj = meshview.o
 
 bin = meshview
 
-CFLAGS = -g -I../../include
-LDFLAGS = -L../.. -lmeshfile -lGL -lGLU -lglut -limago -lm
+CFLAGS = -g -I../include
+LDFLAGS = -L.. -lmeshfile -lGL -lGLU -lglut -limago -lm
 
 $(bin): $(obj)
 	$(CC) -o $(bin) $(obj) $(LDFLAGS)
