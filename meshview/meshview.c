@@ -1,3 +1,14 @@
+/* meshview is a mesh file format viewer, written as an example for how to use
+ * the meshfile library. The license of meshfile does not apply to this example.
+ * I disclaim all copyright for this code, and place it into the public domain.
+ * You can use it as a starting point for your own meshfile programs if you wish.
+ *
+ * Note that a typical non-trivial 3D program would grab the necessary data from
+ * meshfile and put them in custom data structures. This simple viewer uses the
+ * meshfile data structures directly instead.
+ *
+ * Author: John Tsiombikas <nuclear@mutantstargoat.com>
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,10 +32,11 @@ static int parse_args(int argc, char **argv);
 static const char *fname;
 static int win_width, win_height;
 static float cam_theta, cam_phi, cam_dist;
+static float cam_pos[3];
 static float znear = 0.5, zfar = 500.0;
 static int mouse_x, mouse_y;
 static int bnstate[8];
-static int use_tex = 1;
+static int wire, use_tex = 1;
 static struct mf_meshfile *mf;
 
 
@@ -137,6 +149,7 @@ static void display(void)
 	glTranslatef(0, 0, -cam_dist);
 	glRotatef(cam_phi, 1, 0, 0);
 	glRotatef(cam_theta, 0, 1, 0);
+	glTranslatef(-cam_pos[0], -cam_pos[1], -cam_pos[2]);
 
 	for(i=0; i<mf_num_meshes(mf); i++) {
 		mesh = mf_get_mesh(mf, i);
@@ -237,6 +250,12 @@ static void keypress(unsigned char key, int x, int y)
 		glutPostRedisplay();
 		break;
 
+	case 'w':
+		wire ^= 1;
+		glPolygonMode(GL_FRONT_AND_BACK, wire ? GL_LINE : GL_FILL);
+		glutPostRedisplay();
+		break;
+
 	default:
 		break;
 	}
@@ -269,6 +288,25 @@ static void motion(int x, int y)
 
 		if(cam_phi < -90) cam_phi = -90;
 		if(cam_phi > 90) cam_phi = 90;
+		glutPostRedisplay();
+	}
+	if(bnstate[1]) {
+		float up[3], right[3];
+		float theta = cam_theta * M_PI / 180.0f;
+		float phi = cam_phi * M_PI / 180.0f;
+		float pan_scale = (cam_dist * 0.001) + 0.25;
+
+		up[0] = -sin(theta) * sin(phi);
+		up[1] = -cos(phi);
+		up[2] = cos(theta) * sin(phi);
+		right[0] = cos(theta);
+		right[1] = 0;
+		right[2] = sin(theta);
+
+		/* pos += dx * right + dy * up */
+		cam_pos[0] -= (dx * right[0] + dy * up[0]) * pan_scale;
+		cam_pos[1] -= (dx * right[1] + dy * up[1]) * pan_scale;
+		cam_pos[2] -= (dx * right[2] + dy * up[2]) * pan_scale;
 		glutPostRedisplay();
 	}
 	if(bnstate[2]) {
