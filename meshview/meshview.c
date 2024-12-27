@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdarg.h>
 #include <assert.h>
 #include <GL/glut.h>
 #include "imago2.h"
@@ -27,6 +28,7 @@ static void reshape(int x, int y);
 static void keypress(unsigned char key, int x, int y);
 static void mouse(int bn, int st, int x, int y);
 static void motion(int x, int y);
+static void glprintf(int x, int y, const char *fmt, ...);
 static int parse_args(int argc, char **argv);
 
 static const char *fname;
@@ -38,6 +40,8 @@ static int mouse_x, mouse_y;
 static int bnstate[8];
 static int wire, use_tex = 1;
 static struct mf_meshfile *mf;
+
+static long total_faces;
 
 
 int main(int argc, char **argv)
@@ -90,6 +94,10 @@ static int init(void)
 	printf("bounds: %f,%f,%f -> %f,%f,%f\n", bbox.vmin.x, bbox.vmin.y, bbox.vmin.z,
 			bbox.vmax.x, bbox.vmax.y, bbox.vmax.z);
 
+	cam_pos[0] = (bbox.vmin.x + bbox.vmax.x) * 0.5f;
+	cam_pos[1] = (bbox.vmin.y + bbox.vmax.y) * 0.5f;
+	cam_pos[2] = (bbox.vmin.z + bbox.vmax.z) * 0.5f;
+
 	dx = bbox.vmax.x - bbox.vmin.x;
 	dy = bbox.vmax.y - bbox.vmin.y;
 	dz = bbox.vmax.z - bbox.vmin.z;
@@ -100,6 +108,12 @@ static int init(void)
 	if(znear < 0.1) znear = 0.1;
 	/* force recalc projection */
 	if(win_width > 0) reshape(win_width, win_height);
+
+	total_faces = 0;
+	for(i=0; i<mf_num_meshes(mf); i++) {
+		struct mf_mesh *m = mf_get_mesh(mf, i);
+		total_faces += m->num_faces;
+	}
 
 	/* load any textures */
 	for(i=0; i<mf_num_materials(mf); i++) {
@@ -156,6 +170,10 @@ static void display(void)
 		setup_material(mesh->mtl);
 		draw_mesh(mf_get_mesh(mf, i));
 	}
+
+	glColor3f(0, 1, 0);
+	glprintf(10, 20, "file: %s - %d meshes, %ld polygons", mf_get_name(mf),
+			mf_num_meshes(mf), total_faces);
 
 	glutSwapBuffers();
 	assert(glGetError() == GL_NO_ERROR);
@@ -315,6 +333,40 @@ static void motion(int x, int y)
 		if(cam_dist < 0) cam_dist = 0;
 		glutPostRedisplay();
 	}
+}
+
+static void glprintf(int x, int y, const char *fmt, ...)
+{
+	va_list ap;
+	char buf[256];
+	char *s;
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof buf, fmt, ap);
+	va_end(ap);
+	s = buf;
+
+	glPushAttrib(GL_ENABLE_BIT);
+	glDisable(GL_LIGHTING);
+
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+	glOrtho(0, win_width, win_height, 0, -1, 1);
+
+	glRasterPos2i(x, y);
+	while(*s) {
+		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *s++);
+	}
+
+	glPopMatrix();
+	glMatrixMode(GL_MODELVIEW);
+	glPopMatrix();
+
+	glPopAttrib();
 }
 
 static int parse_args(int argc, char **argv)

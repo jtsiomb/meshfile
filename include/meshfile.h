@@ -122,6 +122,8 @@ void mf_free_mtl(struct mf_material *mtl);
 int mf_init_mtl(struct mf_material *mtl);
 void mf_destroy_mtl(struct mf_material *mtl);
 
+const char *mf_get_name(const struct mf_meshfile *mf);
+
 int mf_num_meshes(const struct mf_meshfile *mf);
 int mf_num_materials(const struct mf_meshfile *mf);
 

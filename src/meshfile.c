@@ -192,6 +192,11 @@ void mf_destroy_mtl(struct mf_material *mtl)
 	free(mtl->name);
 }
 
+const char *mf_get_name(const struct mf_meshfile *mf)
+{
+	return mf->name;
+}
+
 int mf_num_meshes(const struct mf_meshfile *mf)
 {
 	return mf_dynarr_size(mf->meshes);
