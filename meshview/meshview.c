@@ -31,7 +31,7 @@ static void motion(int x, int y);
 static void glprintf(int x, int y, const char *fmt, ...);
 static int parse_args(int argc, char **argv);
 
-static const char *fname;
+static const char *fname, *basename;
 static int win_width, win_height;
 static float cam_theta, cam_phi, cam_dist;
 static float cam_pos[3];
@@ -172,8 +172,8 @@ static void display(void)
 	}
 
 	glColor3f(0, 1, 0);
-	glprintf(10, 20, "file: %s - %d meshes, %ld polygons", mf_get_name(mf),
-			mf_num_meshes(mf), total_faces);
+	glprintf(10, 20, "%s - %d meshes, %ld polygons", basename, mf_num_meshes(mf),
+			total_faces);
 
 	glutSwapBuffers();
 	assert(glGetError() == GL_NO_ERROR);
@@ -279,6 +279,16 @@ static void keypress(unsigned char key, int x, int y)
 	}
 }
 
+static void zoom(float delta)
+{
+	float zoomspeed = cam_dist * 0.01f;
+	if(zoomspeed > 1.0f) zoomspeed = 1.0f;
+	cam_dist += delta * zoomspeed;
+
+	if(cam_dist < 0.001) cam_dist = 0.001;
+	glutPostRedisplay();
+}
+
 static void mouse(int bn, int st, int x, int y)
 {
 	int bidx = bn - GLUT_LEFT_BUTTON;
@@ -289,6 +299,14 @@ static void mouse(int bn, int st, int x, int y)
 	}
 	mouse_x = x;
 	mouse_y = y;
+
+	if(press) {
+		if(bidx == 3) {
+			zoom(-10);
+		} else if(bidx == 4) {
+			zoom(10);
+		}
+	}
 }
 
 static void motion(int x, int y)
@@ -328,10 +346,7 @@ static void motion(int x, int y)
 		glutPostRedisplay();
 	}
 	if(bnstate[2]) {
-		cam_dist += dy * 0.1f;
-
-		if(cam_dist < 0) cam_dist = 0;
-		glutPostRedisplay();
+		zoom(dy);
 	}
 }
 
@@ -359,7 +374,7 @@ static void glprintf(int x, int y, const char *fmt, ...)
 
 	glRasterPos2i(x, y);
 	while(*s) {
-		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *s++);
+		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *s++);
 	}
 
 	glPopMatrix();
@@ -391,6 +406,11 @@ static int parse_args(int argc, char **argv)
 				return -1;
 			}
 			fname = argv[i];
+			if((basename = strrchr(fname, '/'))) {
+				basename++;
+			} else {
+				basename = fname;
+			}
 		}
 	}
 	return 0;
