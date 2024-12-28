@@ -49,13 +49,12 @@ See COPYING and COPYING.LESSER for details.
 
 Build
 -----
-To build meshfile on UNIX, simply run `make`. That will build the library, as
-well as the meshview program. The main library has no dependencies at all, while
-meshview depends on OpenGL, GLUT, and libimago (https://github.com/jtsiomb/libimago).
+To build meshfile on UNIX, simply run `make`. The meshfile library has zero
+dependencies other than libc. Run `make install` as root to install it under the
+`/usr/local` prefix. You can change the prefix by editing the first line of the
+`Makefile`.
 
-`make install` only installs the library, change into the `meshview` directory
-and run `make install` there too, if you intend to also install the mesh viewer
-example program.
-
-If meshview fails to build because of missing dependencies, don't panic, you can
-still install and use the library just fine.
+There's also an example mesh viewer program as part of the meshfile
+distribution. To build and install that change into `meshview` and run `make`
+and `make install` again. For the meshview dependencies and build instructions,
+refer to the `meshview/README.md` file.

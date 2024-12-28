@@ -189,7 +189,14 @@ int mf_init_mtl(struct mf_material *mtl)
 
 void mf_destroy_mtl(struct mf_material *mtl)
 {
+	int i, j;
 	free(mtl->name);
+	for(i=0; i<MF_NUM_MTLATTR; i++) {
+		free(mtl->attr[i].map.name);
+		for(j=0; j<6; j++) {
+			free(mtl->attr[i].map.cube[j]);
+		}
+	}
 }
 
 const char *mf_get_name(const struct mf_meshfile *mf)

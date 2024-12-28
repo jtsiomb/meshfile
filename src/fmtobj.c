@@ -408,19 +408,13 @@ invalopt:		fprintf(stderr, "ignoring invalid %s option in map: %s\n", arg, val);
 
 		} else {
 			if(cubeface == -1) {
-				if(map->name) {
-					fprintf(stderr, "unexpected map argument: %s\n", arg);
-					continue;
-				}
+				free(map->name);
 				if(!(map->name = strdup(arg))) {
 					fprintf(stderr, "failed to allocate map name: %s\n", arg);
 					continue;
 				}
 			} else {
-				if(map->cube[cubeface]) {
-					fprintf(stderr, "attempt to set cube[%s] twice ignored (%s)\n", facename[cubeface], file);
-					continue;
-				}
+				free(map->cube[cubeface]);
 				if(!(map->cube[cubeface] = file = strdup(arg))) {
 					fprintf(stderr, "failed to allocate cubemap name: %s\n", arg);
 					continue;

@@ -9,6 +9,7 @@
  *
  * Author: John Tsiombikas <nuclear@mutantstargoat.com>
  */
+#include <GL/freeglut_std.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,8 +25,10 @@ static void cleanup(void);
 static void display(void);
 static void draw_mesh(struct mf_mesh *m);
 static void setup_material(struct mf_material *mtl);
+static void reset_view(void);
 static void reshape(int x, int y);
 static void keypress(unsigned char key, int x, int y);
+static void skeypress(int key, int x, int y);
 static void mouse(int bn, int st, int x, int y);
 static void motion(int x, int y);
 static void glprintf(int x, int y, const char *fmt, ...);
@@ -59,6 +62,7 @@ int main(int argc, char **argv)
 	glutDisplayFunc(display);
 	glutReshapeFunc(reshape);
 	glutKeyboardFunc(keypress);
+	glutSpecialFunc(skeypress);
 	glutMouseFunc(mouse);
 	glutMotionFunc(motion);
 
@@ -78,8 +82,6 @@ static int init(void)
 	void *pixels;
 	struct mf_material *mtl;
 	const char *map;
-	mf_aabox bbox;
-	float dx, dy, dz;
 
 	if(!fname) {
 		fprintf(stderr, "pass mesh file to open\n");
@@ -90,24 +92,7 @@ static int init(void)
 		fprintf(stderr, "failed to load test.obj\n");
 		return -1;
 	}
-	mf_bounds(mf, &bbox);
-	printf("bounds: %f,%f,%f -> %f,%f,%f\n", bbox.vmin.x, bbox.vmin.y, bbox.vmin.z,
-			bbox.vmax.x, bbox.vmax.y, bbox.vmax.z);
-
-	cam_pos[0] = (bbox.vmin.x + bbox.vmax.x) * 0.5f;
-	cam_pos[1] = (bbox.vmin.y + bbox.vmax.y) * 0.5f;
-	cam_pos[2] = (bbox.vmin.z + bbox.vmax.z) * 0.5f;
-
-	dx = bbox.vmax.x - bbox.vmin.x;
-	dy = bbox.vmax.y - bbox.vmin.y;
-	dz = bbox.vmax.z - bbox.vmin.z;
-
-	cam_dist = sqrt(dx * dx + dy * dy + dz * dz) * 0.75f;
-	zfar = cam_dist * 4.0f;
-	znear = zfar * 0.001;
-	if(znear < 0.1) znear = 0.1;
-	/* force recalc projection */
-	if(win_width > 0) reshape(win_width, win_height);
+	reset_view();
 
 	total_faces = 0;
 	for(i=0; i<mf_num_meshes(mf); i++) {
@@ -225,7 +210,14 @@ static void draw_mesh(struct mf_mesh *m)
 		m->udata = (void*)(intptr_t)dlist;
 	}
 
-	glCallList(dlist);
+	if(m->node) {
+		glPushMatrix();
+		glMultMatrixf(m->node->matrix);
+		glCallList(dlist);
+		glPopMatrix();
+	} else {
+		glCallList(dlist);
+	}
 }
 
 static void setup_material(struct mf_material *mtl)
@@ -243,6 +235,30 @@ static void setup_material(struct mf_material *mtl)
 	} else {
 		glDisable(GL_TEXTURE_2D);
 	}
+}
+
+static void reset_view(void)
+{
+	mf_aabox bbox;
+	float dx, dy, dz;
+
+	cam_theta = cam_phi = 0;
+
+	mf_bounds(mf, &bbox);
+	cam_pos[0] = (bbox.vmin.x + bbox.vmax.x) * 0.5f;
+	cam_pos[1] = (bbox.vmin.y + bbox.vmax.y) * 0.5f;
+	cam_pos[2] = (bbox.vmin.z + bbox.vmax.z) * 0.5f;
+
+	dx = bbox.vmax.x - bbox.vmin.x;
+	dy = bbox.vmax.y - bbox.vmin.y;
+	dz = bbox.vmax.z - bbox.vmin.z;
+
+	cam_dist = sqrt(dx * dx + dy * dy + dz * dz) * 0.75f;
+	zfar = cam_dist * 4.0f;
+	znear = zfar * 0.001;
+	if(znear < 0.1) znear = 0.1;
+	/* force recalc projection */
+	if(win_width > 0) reshape(win_width, win_height);
 }
 
 static void reshape(int x, int y)
@@ -274,7 +290,22 @@ static void keypress(unsigned char key, int x, int y)
 		glutPostRedisplay();
 		break;
 
+	case '\b':
+		reset_view();
+		glutPostRedisplay();
+		break;
+
 	default:
+		break;
+	}
+}
+
+static void skeypress(int key, int x, int y)
+{
+	switch(key) {
+	case GLUT_KEY_HOME:
+		reset_view();
+		glutPostRedisplay();
 		break;
 	}
 }

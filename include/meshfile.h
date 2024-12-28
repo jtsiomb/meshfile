@@ -57,8 +57,8 @@ enum mf_texwrap { MF_TEX_REPEAT, MF_TEX_CLAMP };
 enum mf_primitive { MF_TRIANGLES = 3, MF_QUADS = 4 };
 
 struct mf_texmap {
-	const char *name;		/* for 2D maps */
-	const char *cube[6];	/* for cubemaps */
+	char *name;		/* for 2D maps */
+	char *cube[6];	/* for cubemaps */
 	enum mf_texfilter ufilt, vfilt;
 	enum mf_texwrap uwrap, vwrap;
 	float xform[16];
@@ -79,6 +79,17 @@ struct mf_material {
 	void *udata;
 };
 
+struct mf_node {
+	char *name;
+	struct mf_node *parent;
+	struct mf_node *clist;
+
+	float matrix[16];
+
+	struct mf_mesh **meshes;	/* meshes associated with this node */
+	int num_meshes;
+};
+
 struct mf_mesh {
 	char *name;
 	mf_vec3 *vertex;
@@ -94,6 +105,8 @@ struct mf_mesh {
 	struct mf_material *mtl;
 
 	void *udata;
+
+	struct mf_node *node;	/* transformation node for this mesh */
 };
 
 struct mf_userio {
