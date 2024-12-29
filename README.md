@@ -18,7 +18,7 @@ File formats
 ------------
 Here's a list of currently supported file formats, and any caveats for each one.
 
- - Wavefront OBJ: read only.
+ - Wavefront OBJ.
 
 The plan is to at least support a few other formats that are reasonably easy to
 implement without adding dependencies, like: gltf, milkshape3d, ply, and 3ds.

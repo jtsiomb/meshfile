@@ -6,6 +6,7 @@ test
 .cache
 core
 *.obj
+*.mtl
 *.a
 *.so.*
 *.lib

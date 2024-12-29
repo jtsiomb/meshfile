@@ -35,9 +35,6 @@ static char *parse_face_vert(char *ptr, struct facevertex *fv, int numv, int num
 static int cmp_facevert(const void *ap, const void *bp);
 static void free_rbnode_key(struct rbnode *n, void *cls);
 
-static int write_material(const struct mf_material *mtl, const struct mf_userio *io);
-static int write_mesh(const struct mf_mesh *m, const struct mf_userio *io);
-
 
 int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 {
@@ -604,30 +601,138 @@ static int write_material(const struct mf_material *mtl, const struct mf_userio 
 	return -1;
 }
 
-static int write_mesh(const struct mf_mesh *m, const struct mf_userio *io)
+static int face_vref(const struct mf_mesh *m, unsigned long vidx, char *buf)
 {
-	int i;
+	int len = sprintf(buf, " %lu", ++vidx);
+	if(m->texcoord) {
+		len += sprintf(buf + len, "/%lu", vidx);
+	}
+	if(m->normal) {
+		if(!m->texcoord) {
+			buf[len++] = '/';
+		}
+		len += sprintf(buf + len, "/%lu", vidx);
+	}
+	return len;
+}
+
+static int write_mesh(const struct mf_mesh *m, unsigned long voffs, const struct mf_userio *io)
+{
+	int i, j;
+	mf_vec3 *vptr = m->vertex;
+	char buf[128], *ptr;
+
+	mf_fprintf(io, "o %s\n", m->name);
+	mf_fprintf(io, "usemtl %s\n", m->mtl->name);
 
 	for(i=0; i<m->num_verts; i++) {
+		mf_fprintf(io, "v %f %f %f\n", vptr->x, vptr->y, vptr->z);
+		vptr++;
+	}
+	if(m->normal) {
+		mf_vec3 *nptr = m->normal;
+		for(i=0; i<m->num_verts; i++) {
+			mf_fprintf(io, "vn %f %f %f\n", nptr->x, nptr->y, nptr->z);
+			nptr++;
+		}
+	}
+	if(m->texcoord) {
+		mf_vec2 *tptr = m->texcoord;
+		for(i=0; i<m->num_verts; i++) {
+			mf_fprintf(io, "vt %f %f\n", tptr->x, tptr->y);
+			tptr++;
+		}
+	}
+
+	if(m->faces) {
+		mf_face *fptr = m->faces;
+		for(i=0; i<m->num_faces; i++) {
+			ptr = buf;
+			*ptr++ = 'f';
+
+			for(j=0; j<3; j++) {
+				ptr += face_vref(m, voffs + fptr->vidx[j], ptr);
+			}
+			*ptr++ = '\n';
+			*ptr = 0;
+			mf_fputs(buf, io);
+			fptr++;
+		}
+	} else {
+		for(i=0; i<m->num_faces; i++) {
+			ptr = buf;
+			*ptr++ = 'f';
+			*ptr++ = ' ';
+
+			for(j=0; j<3; j++) {
+				ptr += face_vref(m, voffs++, ptr);
+			}
+			*ptr++ = '\n';
+			*ptr = 0;
+			mf_fputs(buf, io);
+		}
 	}
 	return 0;
+}
+
+static const char *basename(const char *s)
+{
+	const char *res = strrchr(s, '/');
+	return res ? res : s;
 }
 
 int mf_save_obj(const struct mf_meshfile *mf, const struct mf_userio *io)
 {
 	int i;
+	char *mtlpath, *fname, *suffix;
+	unsigned long voffs = 0;
+	struct mf_userio subio = {0};
 
-	/*
+	mf_fputs("# OBJ file written by libmeshfile: https://github.com/jtsiomb/meshfile\n", io);
+
+	if(mf_dynarr_empty(mf->mtl) || !io->open) {
+		goto geom;	/* skip materials */
+	}
+
+	fname = (char*)basename(mf->name);
+	if(mf->dirname) {
+		if(!(mtlpath = malloc(strlen(mf->dirname) + strlen(fname) + 5))) {
+			goto geom;
+		}
+		sprintf(mtlpath, "%s/%s", mf->dirname, fname);
+	} else {
+		if(!(mtlpath = malloc(strlen(fname) + 4))) {
+			goto geom;
+		}
+		strcpy(mtlpath, fname);
+	}
+	if(!(suffix = strrchr(mtlpath, '.'))) {
+		suffix = mtlpath + strlen(mtlpath);
+	}
+	strcpy(suffix, ".mtl");
+
+	if(!(subio.file = io->open(mtlpath, "wb"))) {
+		fprintf(stderr, "failed to open %s for writing\n", mtlpath);
+		goto geom;
+	}
+
 	for(i=0; i<mf_dynarr_size(mf->mtl); i++) {
-		if(write_material(mf->mtl[i], io) == -1) {
-			return -1;
+		if(write_material(mf->mtl[i], &subio) == -1) {
+			io->close(subio.file);
+			goto geom;
 		}
-	}*/
+	}
 
+	io->close(subio.file);
+
+	mf_fprintf(io, "mtllib %s\n", basename(mtlpath));
+
+geom:
 	for(i=0; i<mf_dynarr_size(mf->meshes); i++) {
-		if(write_mesh(mf->meshes[i], io) == -1) {
+		if(write_mesh(mf->meshes[i], voffs, io) == -1) {
 			return -1;
 		}
+		voffs += mf->meshes[i]->num_verts;
 	}
 	return 0;
 }

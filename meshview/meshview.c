@@ -9,7 +9,6 @@
  *
  * Author: John Tsiombikas <nuclear@mutantstargoat.com>
  */
-#include <GL/freeglut_std.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -293,6 +292,13 @@ static void keypress(unsigned char key, int x, int y)
 	case '\b':
 		reset_view();
 		glutPostRedisplay();
+		break;
+
+	case 0x13:
+	case 's':
+		if(glutGetModifiers() & GLUT_ACTIVE_CTRL) {
+			mf_save(mf, "foo.obj");
+		}
 		break;
 
 	default:

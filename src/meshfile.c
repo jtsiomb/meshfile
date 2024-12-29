@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <float.h>
 #include <errno.h>
 #include "meshfile.h"
@@ -314,16 +315,36 @@ int mf_save(const struct mf_meshfile *mf, const char *fname)
 {
 	int res;
 	FILE *fp;
+	struct mf_meshfile *mmf;
 	struct mf_userio io = {0};
+	char *orig_name, *orig_dirname, *slash;
 
 	if(!(fp = fopen(fname, "wb"))) {
 		fprintf(stderr, "mf_save: failed to open %s for writing: %s\n", fname, strerror(errno));
 		return -1;
 	}
+	io.open = io_open;
+	io.close = io_close;
 	io.file = fp;
 	io.write = io_write;
 
+	mmf = (struct mf_meshfile*)mf;
+	orig_name = mf->name;
+	orig_dirname = mf->dirname;
+	mmf->dirname = 0;
+
+	mmf->name = strdup(fname);
+	if((slash = strrchr(fname, '/')) && (mmf->dirname = strdup(fname))) {
+		slash = mmf->dirname + (slash - fname);
+		*slash = 0;
+	}
+
 	res = mf_save_userio(mf, &io);
+
+	free(mmf->name);
+	free(mmf->dirname);
+	mmf->name = orig_name;
+	mmf->dirname = orig_dirname;
 	fclose(fp);
 	return res;
 }
@@ -680,7 +701,7 @@ static int io_write(void *file, void *buf, int sz)
 int mf_fgetc(const struct mf_userio *io)
 {
 	unsigned char c;
-	if(io_read(io->file, &c, 1) == -1) {
+	if(io->read(io->file, &c, 1) == -1) {
 		return -1;
 	}
 	return c;
@@ -699,4 +720,57 @@ char *mf_fgets(char *buf, int sz, const struct mf_userio *io)
 	}
 	*dest = 0;
 	return buf;
+}
+
+int mf_fputs(const char *s, const struct mf_userio *io)
+{
+	int len = strlen(s);
+	if((len = io->write(io->file, (void*)s, len)) <= 0) {
+		return -1;
+	}
+	return len;
+}
+
+int mf_fprintf(const struct mf_userio *io, const char *fmt, ...)
+{
+	int len;
+	va_list ap;
+	static char *buf;
+	static int bufsz;
+
+	if(!buf) {
+		bufsz = 256;
+		if(!(buf = malloc(bufsz))) {
+			return -1;
+		}
+	}
+
+	for(;;) {
+		va_start(ap, fmt);
+		len = vsnprintf(buf, bufsz, fmt, ap);
+		va_end(ap);
+
+		if(len > bufsz) {
+			/* C99-compliant vsnprintf, tells us how much space we need */
+			free(buf);
+			bufsz = len;
+			if(!(buf = malloc(bufsz))) {
+				return -1;
+			}
+
+		} else if(len == -1) {
+			/* non-C99 vsnprintf, try doubling the buffer until it succeeds */
+			free(buf);
+			bufsz <<= 1;
+			if(!(buf = malloc(bufsz))) {
+				return -1;
+			}
+
+		} else {
+			break;	/* success */
+		}
+	}
+
+	mf_fputs(buf, io);
+	return len;
 }

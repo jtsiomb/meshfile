@@ -7,7 +7,7 @@ bin = meshview
 CFLAGS = -g -I../include
 LDFLAGS = -L.. -lmeshfile -lGL -lGLU -lglut -limago -lm
 
-$(bin): $(obj)
+$(bin): $(obj) ../libmeshfile.a
 	$(CC) -o $(bin) $(obj) $(LDFLAGS)
 
 .PHONY: clean
