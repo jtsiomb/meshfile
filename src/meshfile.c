@@ -44,6 +44,7 @@ static struct mf_material defmtl = {
 		{MF_SPECULAR, {0}, DEFMAP},
 		{MF_SHININESS, {1}, DEFMAP},
 		{MF_ROUGHNESS, {1, 1, 1, 1}, DEFMAP},
+		{MF_METALLIC, {0}, DEFMAP},
 		{MF_EMISSIVE, {0}, DEFMAP},
 		{MF_REFLECT, {0}, DEFMAP},
 		{MF_TRANSMIT, {0}, DEFMAP},

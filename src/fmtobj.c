@@ -458,48 +458,46 @@ static int load_mtl(struct mf_meshfile *mf, const struct mf_userio *io)
 				mtl = 0;
 				return -1;
 			}
-
-		} else if(strcmp(cmd, "Kd") == 0) {
+		} else {
 			if(!mtl) continue;
+		}
+
+		if(strcmp(cmd, "Kd") == 0) {
 			parse_value(mtl->attr + MF_COLOR, args);
 
 		} else if(strcmp(cmd, "Ks") == 0) {
-			if(!mtl) continue;
 			parse_value(mtl->attr + MF_SPECULAR, args);
 
 		} else if(strcmp(cmd, "Ns") == 0) {
-			if(!mtl) continue;
 			parse_value(mtl->attr + MF_SHININESS, args);
-			/* TODO compute roughness */
 
 		} else if(strcmp(cmd, "d") == 0) {
-			if(!mtl) continue;
 			if(parse_value(mtl->attr + MF_ALPHA, args) != -1) {
 				mtl->attr[MF_TRANSMIT].val.x = 1.0f - mtl->attr[MF_ALPHA].val.x;
 			}
 
 		} else if(strcmp(cmd, "Ni") == 0) {
-			if(!mtl) continue;
 			parse_value(mtl->attr + MF_IOR, args);
 
+		} else if(strcmp(cmd, "Pr") == 0) {
+			parse_value(mtl->attr + MF_ROUGHNESS, args);
+
+		} else if(strcmp(cmd, "Pm") == 0) {
+			parse_value(mtl->attr + MF_METALLIC, args);
+
 		} else if(strcmp(cmd, "map_Kd") == 0) {
-			if(!mtl) continue;
 			parse_map(mtl->attr + MF_COLOR, args);
 
 		} else if(strcmp(cmd, "map_Ks") == 0) {
-			if(!mtl) continue;
 			parse_map(mtl->attr + MF_SHININESS, args);
 
 		} else if(strcmp(cmd, "map_d") == 0) {
-			if(!mtl) continue;
 			parse_map(mtl->attr + MF_ALPHA, args);
 
 		} else if(strcmp(cmd, "bump") == 0 || strcmp(cmd, "map_bump") == 0) {
-			if(!mtl) continue;
 			parse_map(mtl->attr + MF_BUMP, args);
 
 		} else if(strcmp(cmd, "refl") == 0) {
-			if(!mtl) continue;
 			parse_map(mtl->attr + MF_REFLECT, args);
 
 		}
@@ -660,6 +658,13 @@ static int write_material(const struct mf_material *mtl, const struct mf_userio 
 	}
 	mf_fprintf(io, "d %f\n", mtl->attr[MF_ALPHA].val.x);
 
+	if(mtl->attr[MF_ROUGHNESS].val.x != 1.0) {
+		mf_fprintf(io, "Pr %f\n", mtl->attr[MF_ROUGHNESS].val.x);
+	}
+	if(mtl->attr[MF_METALLIC].val.x != 0.0f) {
+		mf_fprintf(io, "Pm %f\n", mtl->attr[MF_METALLIC].val.x);
+	}
+
 	if(mtl->attr[MF_COLOR].map.name) {
 		print_map("map_Kd", mtl->attr + MF_COLOR, io);
 	}
@@ -680,6 +685,12 @@ static int write_material(const struct mf_material *mtl, const struct mf_userio 
 	}
 	if(mtl->attr[MF_BUMP].map.name) {
 		print_map("bump", mtl->attr + MF_BUMP, io);
+	}
+	if(mtl->attr[MF_ROUGHNESS].map.name) {
+		print_map("map_Pr", mtl->attr + MF_ROUGHNESS, io);
+	}
+	if(mtl->attr[MF_METALLIC].map.name) {
+		print_map("map_Pm", mtl->attr + MF_METALLIC, io);
 	}
 	mf_fputc('\n', io);
 	return 0;

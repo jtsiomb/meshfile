@@ -39,10 +39,11 @@ typedef struct mf_aabox {
 } mf_aabox;
 
 enum mf_mtlattr_type {
-	MF_COLOR,		/* RGBA: base color/albedo/diffuse */
-	MF_SPECULAR,	/* RGB: phong/blinn specular color */
-	MF_SHININESS,	/* scalar: phong/blinn specular exponent */
-	MF_ROUGHNESS,	/* scalar: roughness for physically-based models */
+	MF_COLOR,		/* base color/albedo/diffuse */
+	MF_SPECULAR,	/* phong/blinn specular color */
+	MF_SHININESS,	/* phong/blinn specular exponent */
+	MF_ROUGHNESS,	/* roughness for physically-based models */
+	MF_METALLIC,	/* metallic for physically-based models */
 	MF_EMISSIVE,	/* RGB: emitted light color */
 	MF_REFLECT,		/* scalar: reflectivity */
 	MF_TRANSMIT,	/* scalar: transmittance through material */
