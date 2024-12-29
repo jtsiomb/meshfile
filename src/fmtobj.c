@@ -331,10 +331,14 @@ static int parse_float(const char *s, float *ret)
 	return 0;
 }
 
+static const char *facename[] = {
+	"cube_top", "cube_bottom",
+	"cube_front", "cube_back",
+	"cube_left", "cube_right"
+};
+
 static int parse_map(struct mf_mtlattr *attr, char *args)
 {
-	static const char *facename[] = {"cube_top", "cube_bottom", "cube_front",
-		"cube_back", "cube_left", "cube_right"};
 	int i, cubeface = -1;
 	char *arg, *val, *prev;
 	char *file = 0;
@@ -421,14 +425,8 @@ invalopt:		fprintf(stderr, "ignoring invalid %s option in map: %s\n", arg, val);
 		}
 	}
 
-	memset(map->xform, 0, sizeof map->xform);
-	map->xform[0] = scale.x;
-	map->xform[5] = scale.y;
-	map->xform[10] = scale.z;
-	map->xform[15] = 1;
-	map->xform[12] = pos.x;
-	map->xform[13] = pos.y;
-	map->xform[14] = pos.z;
+	map->offset = pos;
+	map->scale = scale;
 	return 0;
 }
 
@@ -595,10 +593,96 @@ static void free_rbnode_key(struct rbnode *n, void *cls)
 	free(n->key);
 }
 
+static void print_map(const char *cmd, const struct mf_mtlattr *attr, const struct mf_userio *io)
+{
+	int i;
+	const struct mf_texmap *map = &attr->map;
+
+	for(i=0; i<6; i++) {
+		mf_fprintf(io, "%s", cmd);
+		if(map->ufilt != MF_TEX_LINEAR) {
+			mf_fputs(" -blendu off", io);
+		}
+		if(map->vfilt != MF_TEX_LINEAR) {
+			mf_fputs(" -blendv off", io);
+		}
+		if(map->uwrap != MF_TEX_REPEAT) {
+			mf_fputs(" -clamp on", io);
+		}
+		if(map->offset.x != 0.0f || map->offset.y != 0.0f || map->offset.z != 0.0f) {
+			mf_fprintf(io, " -o %f %f %f", map->offset.x, map->offset.y, map->offset.z);
+		}
+		if(map->scale.x != 1.0f || map->scale.y != 1.0f || map->scale.z != 1.0f) {
+			mf_fprintf(io, " -s %f %f %f", map->scale.x, map->scale.y, map->scale.z);
+		}
+
+		if(attr->type == MF_BUMP) {
+			if(attr->val.x != 1.0f) {
+				mf_fprintf(io, " -bm %f", attr->val.x);
+			}
+		}
+
+		if(attr->type == MF_REFLECT) {
+			if(map->name) {
+				mf_fprintf(io, " -type sphere %s\n", map->name);
+				break;
+			}
+			if(map->cube[i]) {
+				mf_fprintf(io, " -type %s %s\n", facename[i], map->cube[i]);
+			}
+		} else {
+			if(map->name) {
+				mf_fprintf(io, " %s\n", map->name);
+			}
+			break;
+		}
+	}
+}
+
+#define NONZEROVEC(v)	((v).x != 0.0f || (v).y != 0.0f || (v).z != 0.0f)
+#define PRINTVEC3(name, v) \
+	mf_fprintf(io, "%s %f %f %f\n", (name), (v).x, (v).y, (v).z)
 
 static int write_material(const struct mf_material *mtl, const struct mf_userio *io)
 {
-	return -1;
+	mf_fprintf(io, "newmtl %s\n", mtl->name);
+	PRINTVEC3("Kd", mtl->attr[MF_COLOR].val);
+	PRINTVEC3("Ks", mtl->attr[MF_SPECULAR].val);
+	mf_fprintf(io, "Ns %f\n", mtl->attr[MF_SHININESS].val.x);
+	if(NONZEROVEC(mtl->attr[MF_EMISSIVE].val)) {
+		PRINTVEC3("Ke", mtl->attr[MF_EMISSIVE].val);
+	}
+	if(NONZEROVEC(mtl->attr[MF_TRANSMIT].val)) {
+		PRINTVEC3("Tf", mtl->attr[MF_TRANSMIT].val);
+	}
+	if(mtl->attr[MF_IOR].val.x != 1.0f) {
+		mf_fprintf(io, "Ni %f\n", mtl->attr[MF_IOR].val.x);
+	}
+	mf_fprintf(io, "d %f\n", mtl->attr[MF_ALPHA].val.x);
+
+	if(mtl->attr[MF_COLOR].map.name) {
+		print_map("map_Kd", mtl->attr + MF_COLOR, io);
+	}
+	if(mtl->attr[MF_SPECULAR].map.name) {
+		print_map("map_Ks", mtl->attr + MF_SPECULAR, io);
+	}
+	if(mtl->attr[MF_EMISSIVE].map.name) {
+		print_map("map_Ke", mtl->attr + MF_EMISSIVE, io);
+	}
+	if(mtl->attr[MF_SHININESS].map.name) {
+		print_map("map_Ns", mtl->attr + MF_SHININESS, io);
+	}
+	if(mtl->attr[MF_ALPHA].map.name) {
+		print_map("map_d", mtl->attr + MF_ALPHA, io);
+	}
+	if(mtl->attr[MF_REFLECT].map.name || mtl->attr[MF_REFLECT].map.cube[0]) {
+		print_map("refl", mtl->attr + MF_REFLECT, io);
+	}
+	if(mtl->attr[MF_BUMP].map.name) {
+		print_map("bump", mtl->attr + MF_BUMP, io);
+	}
+	mf_fputc('\n', io);
+	return 0;
 }
 
 static int face_vref(const struct mf_mesh *m, unsigned long vidx, char *buf)
@@ -689,6 +773,7 @@ int mf_save_obj(const struct mf_meshfile *mf, const struct mf_userio *io)
 	struct mf_userio subio = {0};
 
 	mf_fputs("# OBJ file written by libmeshfile: https://github.com/jtsiomb/meshfile\n", io);
+	mf_fputs("csh -xeyes\n", io);
 
 	if(mf_dynarr_empty(mf->mtl) || !io->open) {
 		goto geom;	/* skip materials */
@@ -715,6 +800,8 @@ int mf_save_obj(const struct mf_meshfile *mf, const struct mf_userio *io)
 		fprintf(stderr, "failed to open %s for writing\n", mtlpath);
 		goto geom;
 	}
+	subio.close = io->close;
+	subio.write = io->write;
 
 	for(i=0; i<mf_dynarr_size(mf->mtl); i++) {
 		if(write_material(mf->mtl[i], &subio) == -1) {

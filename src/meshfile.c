@@ -34,19 +34,22 @@ static void io_close(void *file);
 static int io_read(void *file, void *buf, int sz);
 static int io_write(void *file, void *buf, int sz);
 
+#define DEFMAP \
+	{0, {0}, MF_TEX_LINEAR, MF_TEX_LINEAR, MF_TEX_REPEAT, MF_TEX_REPEAT, {0, 0, 0}, {1, 1, 1}}
+
 static struct mf_material defmtl = {
 	"default material",
 	{
-		{MF_COLOR, {1, 1, 1, 1}, {0}, 0},
-		{MF_SPECULAR},
-		{MF_SHININESS},
-		{MF_ROUGHNESS, {1, 1, 1, 1}},
-		{MF_EMISSIVE},
-		{MF_REFLECT},
-		{MF_TRANSMIT},
-		{MF_IOR, {1.32}},
-		{MF_ALPHA, {1, 1, 1, 1}},
-		{MF_BUMP}
+		{MF_COLOR, {1, 1, 1, 1}, DEFMAP},
+		{MF_SPECULAR, {0}, DEFMAP},
+		{MF_SHININESS, {1}, DEFMAP},
+		{MF_ROUGHNESS, {1, 1, 1, 1}, DEFMAP},
+		{MF_EMISSIVE, {0}, DEFMAP},
+		{MF_REFLECT, {0}, DEFMAP},
+		{MF_TRANSMIT, {0}, DEFMAP},
+		{MF_IOR, {1}, DEFMAP},
+		{MF_ALPHA, {1, 1, 1, 1}, DEFMAP},
+		{MF_BUMP, {0}, DEFMAP}
 	}
 };
 
@@ -720,6 +723,15 @@ char *mf_fgets(char *buf, int sz, const struct mf_userio *io)
 	}
 	*dest = 0;
 	return buf;
+}
+
+int mf_fputc(int c, const struct mf_userio *io)
+{
+	unsigned char ch = c;
+	if(io->write(io->file, &ch, 1) < 1) {
+		return -1;
+	}
+	return c;
 }
 
 int mf_fputs(const char *s, const struct mf_userio *io)

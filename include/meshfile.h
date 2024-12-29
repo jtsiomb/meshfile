@@ -61,7 +61,7 @@ struct mf_texmap {
 	char *cube[6];	/* for cubemaps */
 	enum mf_texfilter ufilt, vfilt;
 	enum mf_texwrap uwrap, vwrap;
-	float xform[16];
+	mf_vec3 offset, scale;
 };
 
 struct mf_mtlattr {
