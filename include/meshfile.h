@@ -44,12 +44,12 @@ enum mf_mtlattr_type {
 	MF_SHININESS,	/* phong/blinn specular exponent */
 	MF_ROUGHNESS,	/* roughness for physically-based models */
 	MF_METALLIC,	/* metallic for physically-based models */
-	MF_EMISSIVE,	/* RGB: emitted light color */
-	MF_REFLECT,		/* scalar: reflectivity */
-	MF_TRANSMIT,	/* scalar: transmittance through material */
-	MF_IOR,			/* scalar: index of refraction */
-	MF_ALPHA,		/* scalar: 1 - transmit, value duplicate of color.w */
-	MF_BUMP,		/* scalar: bump scale, where applicable */
+	MF_EMISSIVE,	/* emitted light color */
+	MF_REFLECT,		/* reflectivity */
+	MF_TRANSMIT,	/* transmittance through material */
+	MF_IOR,			/* index of refraction */
+	MF_ALPHA,		/* 1 - transmit, value duplicate of color.w */
+	MF_BUMP,		/* bump scale, where applicable */
 	MF_NUM_MTLATTR
 };
 
@@ -110,12 +110,15 @@ struct mf_mesh {
 	struct mf_node *node;	/* transformation node for this mesh */
 };
 
+enum { MF_SEEK_SET, MF_SEEK_CUR, MF_SEEK_END };
+
 struct mf_userio {
 	void *file;
 	void *(*open)(const char*, const char*);
 	void (*close)(void*);
 	int (*read)(void*, void*, int);
 	int (*write)(void*, void*, int);
+	long (*seek)(void*, long, int);
 };
 
 struct mf_meshfile;

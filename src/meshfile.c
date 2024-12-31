@@ -33,6 +33,7 @@ static void *io_open(const char *fname, const char *mode);
 static void io_close(void *file);
 static int io_read(void *file, void *buf, int sz);
 static int io_write(void *file, void *buf, int sz);
+static long io_seek(void *file, long offs, int from);
 
 #define DEFMAP \
 	{0, {0}, MF_TEX_LINEAR, MF_TEX_LINEAR, MF_TEX_REPEAT, MF_TEX_REPEAT, {0, 0, 0}, {1, 1, 1}}
@@ -298,6 +299,7 @@ int mf_load(struct mf_meshfile *mf, const char *fname)
 	io.open = io_open;
 	io.close = io_close;
 	io.read = io_read;
+	io.seek = io_seek;
 
 	mf->name = strdup(fname);
 	if((slash = strrchr(fname, '/')) && (mf->dirname = strdup(fname))) {
@@ -700,6 +702,12 @@ static int io_write(void *file, void *buf, int sz)
 	size_t wrbytes = fwrite(buf, 1, sz, file);
 	if(!wrbytes) return -1;
 	return wrbytes;
+}
+
+static long io_seek(void *file, long offs, int from)
+{
+	fseek(file, offs, from);
+	return ftell(file);
 }
 
 int mf_fgetc(const struct mf_userio *io)

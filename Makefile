@@ -55,6 +55,8 @@ install: $(liba)
 	cp include/meshfile.h $(DESTDIR)$(PREFIX)/include/meshfile.h
 	cp $(liba) $(DESTDIR)$(PREFIX)/$(libdir)/$(liba)
 	cp $(libso) $(DESTDIR)$(PREFIX)/$(libdir)/$(libso)
+	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(soname)
+	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname)
 	ln -s $(libso) $(DESTDIR)$(PREFIX)/$(libdir)/$(soname)
 	ln -s $(soname) $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname)
 
