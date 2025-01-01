@@ -1,6 +1,6 @@
 /*
 meshfile - a simple C library for reading/writing 3D mesh file formats
-Copyright (C) 2024  John Tsiombikas <nuclear@mutantstargoat.com>
+Copyright (C) 2025  John Tsiombikas <nuclear@mutantstargoat.com>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
