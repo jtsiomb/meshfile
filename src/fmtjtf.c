@@ -68,6 +68,10 @@ int mf_load_jtf(struct mf_meshfile *mf, const struct mf_userio *io)
 		fprintf(stderr, "jtf: failed to allocate mesh\n");
 		return -1;
 	}
+	if(!(mesh->name = strdup("jtfmesh"))) {
+		fprintf(stderr, "jtf: failed to allocate mesh name\n");
+		goto err;
+	}
 
 	vidx = 0;
 	for(i=0; i<hdr.nfaces; i++) {

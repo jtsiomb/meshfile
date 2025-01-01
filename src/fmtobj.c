@@ -45,7 +45,6 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 	mf_vec2 *tarr = 0;
 	struct rbtree *rbtree = 0;
 	struct mf_mesh *mesh = 0;
-	char *mesh_name = 0;
 	struct mf_userio subio = {0};
 
 	subio.open = io->open;
@@ -55,10 +54,6 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 	if(!mf->name && !(mf->name = strdup("<unknown>"))) {
 		fprintf(stderr, "mf_load_userio: failed to allocate name\n");
 		return -1;
-	}
-	if(!(mesh_name = strdup(mf->name))) {
-		fprintf(stderr, "mf_load: failed to allocate mesh name\n");
-		goto end;
 	}
 
 	if(!(rbtree = rb_create(cmp_facevert))) {
@@ -75,6 +70,10 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 	}
 
 	if(!(mesh = mf_alloc_mesh())) {
+		goto end;
+	}
+	if(!(mesh->name = strdup(mf->name))) {
+		fprintf(stderr, "mf_load: failed to allocate mesh name\n");
 		goto end;
 	}
 
@@ -204,12 +203,11 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 
 		case 'o':
 		case 'g':
-			mesh->name = mesh_name;
 			if(mesh_done(mf, mesh) != -1 && !(mesh = mf_alloc_mesh())) {
 				fprintf(stderr, "mf_load: failed to allocate mesh\n");
 				goto end;
 			}
-			if(!(mesh_name = strdup(clean_line(line + 2)))) {
+			if(!(mesh->name = strdup(clean_line(line + 2)))) {
 				fprintf(stderr, "mf_load: failed to allocate mesh name\n");
 				goto end;
 			}
@@ -239,8 +237,6 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 		}
 	}
 
-	mesh->name = mesh_name;
-	mesh_name = 0;
 	mesh_done(mf, mesh);
 	mesh = 0;
 

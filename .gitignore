@@ -12,3 +12,4 @@ core
 *.lib
 *.dll
 meshview/meshview
+meshconv/meshconv
