@@ -21,11 +21,19 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <stdint.h>
 #include <stdarg.h>
 #include <float.h>
+#include <ctype.h>
 #include <errno.h>
 #include "meshfile.h"
 #include "mfpriv.h"
 #include "dynarr.h"
 
+/* the order in this table is significant. It's the order used when trying to
+ * open a file. wavefront obj must be last, because it can't be identified.
+ */
+struct filefmt filefmt[MF_NUM_FMT] = {
+	{MF_FMT_JTF, {"jtf", 0}, mf_load_jtf, mf_save_jtf},
+	{MF_FMT_OBJ, {"obj", 0}, mf_load_obj, mf_save_obj}
+};
 
 static void assetpath_rbdelnode(struct rbnode *n, void *cls);
 
@@ -99,6 +107,8 @@ int mf_init(struct mf_meshfile *mf)
 
 	mf->aabox.vmin.x = mf->aabox.vmin.y = mf->aabox.vmin.z = FLT_MAX;
 	mf->aabox.vmax.x = mf->aabox.vmax.y = mf->aabox.vmax.z = -FLT_MAX;
+
+	mf->savefmt = mf->autofmt = -1;
 	return 0;
 }
 
@@ -314,16 +324,37 @@ int mf_load(struct mf_meshfile *mf, const char *fname)
 
 int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io)
 {
-	return mf_load_obj(mf, io);
+	int i;
+	long fpos = io->seek(io->file, 0, MF_SEEK_CUR);
+
+	for(i=0; i<MF_NUM_FMT; i++) {
+		if(filefmt[i].load(mf, io) == 0) {
+			return 0;
+		}
+		if(io->seek(io->file, fpos, MF_SEEK_SET) == -1) {
+			return -1;
+		}
+	}
+	return -1;
+}
+
+static int mystrcasecmp(const char *a, const char *b)
+{
+	while(*a && *b && tolower(*a) == tolower(*b)) {
+		a++;
+		b++;
+	}
+	return (int)*(unsigned char*)a - (int)*(unsigned char*)b;
 }
 
 int mf_save(const struct mf_meshfile *mf, const char *fname)
 {
-	int res;
+	int i, j, res;
 	FILE *fp;
 	struct mf_meshfile *mmf;
 	struct mf_userio io = {0};
 	char *orig_name, *orig_dirname, *slash;
+	const char *suffix;
 
 	if(!(fp = fopen(fname, "wb"))) {
 		fprintf(stderr, "mf_save: failed to open %s for writing: %s\n", fname, strerror(errno));
@@ -345,6 +376,19 @@ int mf_save(const struct mf_meshfile *mf, const char *fname)
 		*slash = 0;
 	}
 
+	mmf->autofmt = -1;
+	if(mmf->savefmt == -1 && (suffix = strrchr(fname, '.'))) {
+		for(i=0; i<MF_NUM_FMT; i++) {
+			for(j=0; filefmt[i].suffixes[j]; j++) {
+				if(mystrcasecmp(suffix + 1, filefmt[i].suffixes[j]) == 0) {
+					mmf->autofmt = filefmt[i].fmt;
+					goto matched;
+				}
+			}
+		}
+	}
+matched:
+
 	res = mf_save_userio(mf, &io);
 
 	free(mmf->name);
@@ -357,7 +401,27 @@ int mf_save(const struct mf_meshfile *mf, const char *fname)
 
 int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io)
 {
-	return mf_save_obj(mf, io);
+	int i, fmt;
+
+	if(mf->savefmt != MF_FMT_AUTO) {
+		fmt = mf->savefmt;
+	} else if(mf->autofmt != MF_FMT_AUTO) {
+		fmt = mf->autofmt;
+	} else {
+		fmt = MF_FMT_OBJ;
+	}
+
+	for(i=0; i<MF_NUM_FMT; i++) {
+		if(filefmt[i].fmt == fmt) {
+			return filefmt[i].save(mf, io);
+		}
+	}
+	return -1;
+}
+
+void mf_save_format(struct mf_meshfile *mf, int fmt)
+{
+	mf->savefmt = fmt;
 }
 
 /* mesh functions */

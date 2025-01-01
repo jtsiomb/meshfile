@@ -27,6 +27,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #define PACKED	__attribute__((packed))
 #endif
 
+int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io);
+int mf_save_obj(const struct mf_meshfile *mf, const struct mf_userio *io);
+
+int mf_load_jtf(struct mf_meshfile *mf, const struct mf_userio *io);
+int mf_save_jtf(const struct mf_meshfile *mf, const struct mf_userio *io);
+
 struct mf_meshfile {
 	char *name;
 	char *dirname;
@@ -35,13 +41,19 @@ struct mf_meshfile {
 	mf_aabox aabox;
 
 	struct rbtree *assetpath;
+	int savefmt, autofmt;
 };
 
-int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io);
-int mf_save_obj(const struct mf_meshfile *mf, const struct mf_userio *io);
+struct filefmt {
+	int fmt;
+	const char *suffixes[32];
 
-int mf_load_ms3d(struct mf_meshfile *mf, const struct mf_userio *io);
-int mf_save_ms3d(const struct mf_meshfile *mf, const struct mf_userio *io);
+	int (*load)(struct mf_meshfile*, const struct mf_userio*);
+	int (*save)(const struct mf_meshfile*, const struct mf_userio*);
+};
+
+extern struct filefmt filefmt[MF_NUM_FMT];
+
 
 int mf_fgetc(const struct mf_userio *io);
 char *mf_fgets(char *buf, int sz, const struct mf_userio *io);

@@ -121,6 +121,14 @@ struct mf_userio {
 	long (*seek)(void*, long, int);
 };
 
+/* parameter to mf_save_format */
+enum {
+	MF_FMT_OBJ,		/* wavefront OBJ */
+	MF_FMT_JTF,		/* Just Triangle Faces: http://runtimeterror.com/tech/jtf */
+	MF_NUM_FMT
+};
+#define MF_FMT_AUTO		(-1)
+
 struct mf_meshfile;
 
 struct mf_meshfile *mf_alloc(void);
@@ -160,6 +168,8 @@ int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io);
 
 int mf_save(const struct mf_meshfile *mf, const char *fname);
 int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io);
+
+void mf_save_format(struct mf_meshfile *mf, int fmt);
 
 /* mesh functions */
 void mf_clear_mesh(struct mf_mesh *m);
