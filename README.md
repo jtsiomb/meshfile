@@ -18,7 +18,8 @@ File formats
 ------------
 Here's a list of currently supported file formats, and any caveats for each one.
 
- - Wavefront OBJ.
+ - Wavefront OBJ
+ - JTF (Just Triangle Faces): http://runtimeterror.com/tech/jtf
 
 The plan is to at least support a few other formats that are reasonably easy to
 implement without adding dependencies, like: gltf, milkshape3d, ply, and 3ds.
@@ -40,7 +41,7 @@ stability.
 
 License
 -------
-Copyright (C) 2024 John Tsiombikas <nuclear@mutantstargoat.com>
+Copyright (C) 2025 John Tsiombikas <nuclear@mutantstargoat.com>
 
 This program is free software. Feel free to run, modify and/or redistribute
 under the terms of the GNU Lesser General Public License v3, or at your option

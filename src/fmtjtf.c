@@ -1,4 +1,25 @@
 /*
+meshfile - a simple C library for reading/writing 3D mesh file formats
+Copyright (C) 2025  John Tsiombikas <nuclear@mutantstargoat.com>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+#include <stdio.h>
+#include <string.h>
+#include "mfpriv.h"
+
+/*
 JTF file format:
 Offset	Description
 0	Magic bytes 74, 84, 70 and 33 ('JTF!')
@@ -12,9 +33,6 @@ Offset	Description
 12	Three 32bit floats for the normal
 24	Two 32bit floats for the texture coordinate
 */
-#include <stdio.h>
-#include <string.h>
-#include "mfpriv.h"
 
 struct jtf_vertex {
 	mf_vec3 pos, norm;
