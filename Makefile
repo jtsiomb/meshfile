@@ -30,7 +30,7 @@ all: $(libso) $(liba)
 	@echo
 
 $(libso): $(obj)
-	$(CC) -o $@ $(shared) $(LDFLAGS)
+	$(CC) -o $@ $(shared) $(obj) $(LDFLAGS)
 
 $(liba): $(obj)
 	$(AR) rcs $@ $(obj)
