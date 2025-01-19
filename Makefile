@@ -38,6 +38,9 @@ $(liba): $(obj)
 meshview/meshview: meshview/meshview.c $(libso)
 	$(MAKE) -C meshview
 
+meshconv/meshconv: meshconv/meshconv.c $(libso)
+	$(MAKE) -C meshconv
+
 -include $(dep)
 
 .PHONY: clean
@@ -69,10 +72,10 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname)
 
 .PHONY: clean-all
-clean-all: clean clean-meshview
+clean-all: clean clean-meshview clean-meshconv
 
 .PHONY: install-all
-install-all: install install-meshview
+install-all: install install-meshview install-meshconv
 
 .PHONY: meshview
 meshview: $(libso)
@@ -85,3 +88,16 @@ clean-meshview: $(libso)
 .PHONY: install-meshview
 install-meshview: meshview/meshview
 	$(MAKE) -C meshview install
+
+
+.PHONY: meshconv
+meshconv: $(libso)
+	$(MAKE) -C meshconv
+
+.PHONY: clean-meshconv
+clean-meshconv: $(libso)
+	$(MAKE) -C meshconv clean
+
+.PHONY: install-meshconv
+install-meshconv: meshconv/meshconv
+	$(MAKE) -C meshconv install

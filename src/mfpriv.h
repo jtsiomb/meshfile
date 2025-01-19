@@ -61,6 +61,7 @@ int mf_fputc(int c, const struct mf_userio *io);
 int mf_fputs(const char *s, const struct mf_userio *io);
 int mf_fprintf(const struct mf_userio *io, const char *fmt, ...);
 
+int mf_strcasecmp(const char *a, const char *b);
 
 #define TARGET_BIGEND		(*(uint16_t*)"ab" == 0x6162)
 #define TARGET_LITEND		(*(uint16_t*)"ab" == 0x6261)

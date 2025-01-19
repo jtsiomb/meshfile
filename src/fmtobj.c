@@ -490,7 +490,7 @@ static int load_mtl(struct mf_meshfile *mf, const struct mf_userio *io)
 		} else if(strcmp(cmd, "map_d") == 0) {
 			parse_map(mtl->attr + MF_ALPHA, args);
 
-		} else if(strcmp(cmd, "bump") == 0 || strcmp(cmd, "map_bump") == 0) {
+		} else if(strcmp(cmd, "bump") == 0 || mf_strcasecmp(cmd, "map_bump") == 0) {
 			parse_map(mtl->attr + MF_BUMP, args);
 
 		} else if(strcmp(cmd, "refl") == 0) {

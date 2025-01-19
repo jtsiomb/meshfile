@@ -163,6 +163,8 @@ int mf_init_mesh(struct mf_mesh *m)
 {
 	memset(m, 0, sizeof *m);
 	m->mtl = &defmtl;
+	m->aabox.vmin.x = m->aabox.vmin.y = m->aabox.vmin.z = FLT_MAX;
+	m->aabox.vmax.x = m->aabox.vmax.y = m->aabox.vmax.z = -FLT_MAX;
 	return 0;
 }
 
@@ -338,7 +340,7 @@ int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io)
 	return -1;
 }
 
-static int mystrcasecmp(const char *a, const char *b)
+int mf_strcasecmp(const char *a, const char *b)
 {
 	while(*a && *b && tolower(*a) == tolower(*b)) {
 		a++;
@@ -380,7 +382,7 @@ int mf_save(const struct mf_meshfile *mf, const char *fname)
 	if(mmf->savefmt == -1 && (suffix = strrchr(fname, '.'))) {
 		for(i=0; i<MF_NUM_FMT; i++) {
 			for(j=0; filefmt[i].suffixes[j]; j++) {
-				if(mystrcasecmp(suffix + 1, filefmt[i].suffixes[j]) == 0) {
+				if(mf_strcasecmp(suffix + 1, filefmt[i].suffixes[j]) == 0) {
 					mmf->autofmt = filefmt[i].fmt;
 					goto matched;
 				}
