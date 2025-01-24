@@ -464,6 +464,9 @@ static int load_mtl(struct mf_meshfile *mf, const struct mf_userio *io)
 		} else if(strcmp(cmd, "Ks") == 0) {
 			parse_value(mtl->attr + MF_SPECULAR, args);
 
+		} else if(strcmp(cmd, "Ke") == 0) {
+			parse_value(mtl->attr + MF_EMISSIVE, args);
+
 		} else if(strcmp(cmd, "Ns") == 0) {
 			parse_value(mtl->attr + MF_SHININESS, args);
 
