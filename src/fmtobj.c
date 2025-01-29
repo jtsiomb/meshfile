@@ -552,6 +552,8 @@ static char *parse_idx(char *ptr, int *idx, int arrsz)
  */
 static char *parse_face_vert(char *ptr, struct facevertex *fv, int numv, int numt, int numn)
 {
+	fv->vidx = fv->tidx = fv->nidx = -1;
+
 	if(!(ptr = parse_idx(ptr, &fv->vidx, numv)))
 		return 0;
 	if(*ptr != '/') return (!*ptr || isspace(*ptr)) ? ptr : 0;
