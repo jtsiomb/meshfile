@@ -33,6 +33,10 @@ int mf_save_obj(const struct mf_meshfile *mf, const struct mf_userio *io);
 int mf_load_jtf(struct mf_meshfile *mf, const struct mf_userio *io);
 int mf_save_jtf(const struct mf_meshfile *mf, const struct mf_userio *io);
 
+int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io);
+int mf_save_gltf(const struct mf_meshfile *mf, const struct mf_userio *io);
+
+
 struct mf_meshfile {
 	char *name;
 	char *dirname;

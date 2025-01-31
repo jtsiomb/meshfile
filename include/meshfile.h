@@ -125,6 +125,7 @@ struct mf_userio {
 enum {
 	MF_FMT_OBJ,		/* wavefront OBJ */
 	MF_FMT_JTF,		/* Just Triangle Faces: http://runtimeterror.com/tech/jtf */
+	MF_FMT_GLTF,	/* GL Transmission Format */
 	MF_NUM_FMT
 };
 #define MF_FMT_AUTO		(-1)
