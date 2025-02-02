@@ -33,6 +33,16 @@ enum {
 	GLTF_FLOAT
 };
 
+enum {
+	GLTF_POINTS,
+	GLTF_LINES,
+	GLTF_LINE_LOOP,
+	GLTF_LINE_STRIP,
+	GLTF_TRIANGLES,
+	GLTF_TRIANGLE_STRIP,
+	GLTF_TRIANGLE_FAN
+};
+
 struct buffer {
 	unsigned long size;
 	unsigned char *data;
@@ -329,7 +339,7 @@ static int read_bufview(struct mf_meshfile *mf, struct gltf_file *gltf, struct j
 	void *ptr;
 	long val;
 
-	if((bv.bufidx = json_lookup_int(jbv, "buffer", -1)) < 0) {
+	if((bv.bufidx = json_lookup_int(jbv, "buffer", -1)) < 0 || bv.bufidx >= mf_dynarr_size(gltf->buffers)) {
 		fprintf(stderr, "load_gltf: bufferview missing or invalid buffer index\n");
 		return -1;
 	}
@@ -369,7 +379,7 @@ static int read_accessor(struct mf_meshfile *mf, struct gltf_file *gltf, struct 
 	void *ptr;
 	long val;
 
-	if((acc.bvidx = json_lookup_int(jacc, "bufferView", -1)) < 0) {
+	if((acc.bvidx = json_lookup_int(jacc, "bufferView", -1)) < 0 || acc.bvidx >= mf_dynarr_size(gltf->bufviews)) {
 		fprintf(stderr, "load_gltf: accessor missing or invalid buffer view index\n");
 		return -1;
 	}
@@ -396,6 +406,166 @@ static int read_accessor(struct mf_meshfile *mf, struct gltf_file *gltf, struct 
 	return 0;
 }
 
+static struct accessor *find_accessor(struct gltf_file *gltf, struct json_obj *jattr, const char *name)
+{
+	int idx = json_lookup_int(jattr, name, -1);
+	if(idx < 0) return 0;
+	return gltf->accessors + idx;
+}
+
+
+enum { POSITION, NORMAL, TANGENT, TEXCOORD_0, COLOR_0, FACEIDX };
+
+static int read_mesh_attr(struct mf_mesh *mesh, struct gltf_file *gltf, struct accessor *acc, int attrid)
+{
+	int j, curidx = 0;
+	long i;
+	unsigned char *src;
+	struct bufview *bview;
+	struct buffer *buf;
+	float vec[4] = {0, 0, 0, 1};
+	unsigned int vidx[3];
+
+	bview = gltf->bufviews + acc->bvidx;
+	buf = gltf->buffers + bview->bufidx;
+
+	src = buf->data + bview->offs + acc->offs;
+
+	for(i=0; i<acc->count; i++) {
+		switch(acc->type) {
+		case GLTF_FLOAT:
+			memcpy(vec, src, acc->nelem * sizeof(float));
+			src += acc->nelem * sizeof(float);
+			break;
+
+		case GLTF_UBYTE:
+			for(j=0; j<acc->nelem; j++) {
+				vec[j] = *src++ / 255.0f;
+			}
+			break;
+
+		case GLTF_USHORT:
+			if(attrid == FACEIDX) {
+				vidx[curidx++] = *(unsigned short*)src;
+				src += sizeof(unsigned short);
+			} else {
+				for(j=0; j<acc->nelem; j++) {
+					vec[j] = *(unsigned short*)src / 65535.0f;
+					src += sizeof(unsigned short);
+				}
+			}
+			break;
+
+		case GLTF_UINT:
+			if(attrid == FACEIDX) {
+				vidx[curidx++] = *(unsigned int*)src;
+				src += sizeof(unsigned int);
+				break;
+			}
+		default:
+			fprintf(stderr, "load_gltf: unsupported element type\n");
+			return -1;
+		}
+
+		switch(attrid) {
+		case POSITION:
+			mf_add_vertex(mesh, vec[0], vec[1], vec[2]);
+			break;
+		case NORMAL:
+			mf_add_normal(mesh, vec[0], vec[1], vec[2]);
+			break;
+		case TANGENT:
+			mf_add_tangent(mesh, vec[0], vec[1], vec[2]);
+			break;
+		case TEXCOORD_0:
+			mf_add_texcoord(mesh, vec[0], vec[1]);
+			break;
+		case COLOR_0:
+			mf_add_color(mesh, vec[0], vec[1], vec[2], vec[3]);
+			break;
+		case FACEIDX:
+			if(curidx >= 3) {
+				mf_add_triangle(mesh, vidx[0], vidx[1], vidx[2]);
+				curidx = 0;
+			}
+			break;
+		default:
+			fprintf(stderr, "load_gltf: invalid attribute: %d\n", attrid);
+			return -1;
+		}
+	}
+	return 0;
+}
+
+static struct mf_mesh *read_prim(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jp)
+{
+	static const char *modestr[] = {"POINTS", "LINES", "LINE_LOOP", "LINE_STRIP",
+		"TRIANGLES", "TRIANGLE_STRIP", "TRIANGLE_FAN"};
+	static const char *attrstr[] = {"POSITION", "NORMAL", "TANGENT", "TEXCOORD_0", "COLOR_0", 0};
+	int i, val;
+	struct json_obj *jattr;
+	struct mf_mesh *mesh;
+	struct accessor *acc;
+
+	if((val = json_lookup_int(jp, "mode", GLTF_TRIANGLES)) != GLTF_TRIANGLES) {
+		printf("load_gltf: skip unsupported primitive type: %s\n", modestr[val]);
+		return 0;
+	}
+
+	if(!(jattr = json_lookup_obj(jp, "attributes", 0))) {
+		fprintf(stderr, "load_gltf: mesh primitive missing or invalid attributes object\n");
+		return 0;
+	}
+
+	if(!(mesh = mf_alloc_mesh())) {
+		fprintf(stderr, "load_gltf: failed to allocate mesh\n");
+		return 0;
+	}
+
+	/* read all supported vertex attributes */
+	for(i=0; attrstr[i]; i++) {
+		if(!(acc = find_accessor(gltf, jattr, attrstr[i])) ||
+				read_mesh_attr(mesh, gltf, acc, i) == -1) {
+			if(i != POSITION) continue;
+			fprintf(stderr, "load_gltf: missing or invalid POSITION attribute in primitive\n");
+			goto err;
+		}
+	}
+
+	/* read vertex indices if it's an indexed mesh */
+	if((val = json_lookup_int(jp, "indices", -1)) >= 0) {
+		if(val >= mf_dynarr_size(gltf->accessors)) {
+			fprintf(stderr, "load_gltf: indices refers to invalid accessor: %d\n", val);
+			goto err;
+		}
+		acc = gltf->accessors + val;
+		if((acc->type != GLTF_UINT && acc->type != GLTF_USHORT) || acc->nelem != 1) {
+			fprintf(stderr, "load_gltf: indices refers to accessor of invalid type\n");
+			goto err;
+		}
+
+		if(read_mesh_attr(mesh, gltf, acc, FACEIDX) == -1) {
+			fprintf(stderr, "load_gltf: invalid face index data in primitive\n");
+			goto err;
+		}
+	}
+
+	/* assign material */
+	if((val = json_lookup_int(jp, "material", -1)) >= 0) {
+		if(val >= mf_num_materials(mf)) {
+			fprintf(stderr, "load_gltf: primitive refers to invalid material: %d\n", val);
+		} else {
+			mesh->mtl = mf_get_material(mf, val);
+		}
+	}
+
+	return mesh;
+
+err:
+	mf_free_mesh(mesh);
+	return 0;
+}
+
 static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jmesh,
 		const struct mf_userio *io)
 {
@@ -403,6 +573,7 @@ static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 	struct json_item *jitem;
 	struct json_value *jprim;
 	const char *mesh_name = json_lookup_str(jmesh, "name", 0);
+	struct mf_mesh *mesh;
 
 	if(!(jitem = json_find_item(jmesh, "primitives")) || jitem->val.type != JSON_ARR) {
 		fprintf(stderr, "load_gltf: mesh missing or invalid primitives array\n");
@@ -416,9 +587,18 @@ static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 			fprintf(stderr, "load_gltf: mesh primitive not an object!\n");
 			return -1;
 		}
+
+		if((mesh = read_prim(mf, gltf, &jprim->obj))) {
+			if(!(mesh->name = strdup(mesh_name))) {
+				fprintf(stderr, "load_gltf: failed to allocate mesh name\n");
+				mf_free_mesh(mesh);
+				return -1;
+			}
+			mf_add_mesh(mf, mesh);
+		}
 	}
 
-	return -1;
+	return 0;
 }
 
 int mf_save_gltf(const struct mf_meshfile *mf, const struct mf_userio *io)
