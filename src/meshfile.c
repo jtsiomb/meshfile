@@ -209,7 +209,9 @@ int mf_init_mtl(struct mf_material *mtl)
 void mf_destroy_mtl(struct mf_material *mtl)
 {
 	int i, j;
-	free(mtl->name);
+	if(mtl->name != defmtl.name) {
+		free(mtl->name);
+	}
 	for(i=0; i<MF_NUM_MTLATTR; i++) {
 		free(mtl->attr[i].map.name);
 		for(j=0; j<6; j++) {

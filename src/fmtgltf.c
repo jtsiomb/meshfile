@@ -409,6 +409,7 @@ static int get_texture(struct gltf_file *gltf, struct mf_texmap *tex, const char
 	return 0;
 }
 
+/* TODO: KHR_materials_common */
 static int read_material(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jmtl,
 		const struct mf_userio *io)
 {
@@ -434,9 +435,8 @@ static int read_material(struct mf_meshfile *mf, struct gltf_file *gltf, struct 
 		return -1;
 	}
 
-	if((str = json_lookup_str(jmtl, "name", 0))) {
-		mtl->name = strdup(str);
-	}
+	str = json_lookup_str(jmtl, "name", 0);
+	mtl->name = strdup(str ? str : "unnamed material");
 
 	if((jval = json_lookup(jmtl, "pbrMetallicRoughness.baseColorFactor"))) {
 		jval_to_vec(jval, &mtl->attr[MF_COLOR].val);

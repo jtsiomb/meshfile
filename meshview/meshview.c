@@ -40,7 +40,7 @@ static float cam_pos[3];
 static float znear = 0.5, zfar = 500.0;
 static int mouse_x, mouse_y;
 static int bnstate[8];
-static int wire, use_tex = 1;
+static int wire, zup, use_tex = 1;
 static struct mf_meshfile *mf;
 
 static long total_faces;
@@ -56,7 +56,7 @@ int main(int argc, char **argv)
 
 	glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
 	glutInitWindowSize(800, 600);
-	glutCreateWindow("meshfile library test");
+	glutCreateWindow("meshfile 3D viewer");
 
 	glutDisplayFunc(display);
 	glutReshapeFunc(reshape);
@@ -147,6 +147,7 @@ static void display(void)
 	glTranslatef(0, 0, -cam_dist);
 	glRotatef(cam_phi, 1, 0, 0);
 	glRotatef(cam_theta, 0, 1, 0);
+	if(zup) glRotatef(90, 1, 0, 0);
 	glTranslatef(-cam_pos[0], -cam_pos[1], -cam_pos[2]);
 
 	for(i=0; i<mf_num_meshes(mf); i++) {
@@ -301,6 +302,11 @@ static void keypress(unsigned char key, int x, int y)
 		}
 		break;
 
+	case 'z':
+		zup ^= 1;
+		glutPostRedisplay();
+		break;
+
 	default:
 		break;
 	}
@@ -400,6 +406,7 @@ static void glprintf(int x, int y, const char *fmt, ...)
 
 	glPushAttrib(GL_ENABLE_BIT);
 	glDisable(GL_LIGHTING);
+	glDisable(GL_TEXTURE_2D);
 
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
