@@ -43,6 +43,21 @@ enum {
 	GLTF_TRIANGLE_FAN
 };
 
+enum {
+	GLTF_NEAREST = 9728,
+	GLTF_LINEAR,
+	GLTF_NEAREST_MIPMAP_NEAREST = 9984,
+	GLTF_LINEAR_MIPMAP_NEAREST,
+	GLTF_NEAREST_MIPMAP_LINEAR,
+	GLTF_LINEAR_MIPMAP_LINEAR
+};
+
+enum {
+	GLTF_REPEAT = 10497,
+	GLTF_CLAMP_TO_EDGE = 33071,
+	GLTF_MIRRORED_REPEAT = 33648
+};
+
 struct buffer {
 	unsigned long size;
 	unsigned char *data;
@@ -64,11 +79,23 @@ struct image {
 	char *fname;
 };
 
+struct sampler {
+	int magfilt, minfilt;
+	int uwrap, vwrap;
+};
+
+struct texture {
+	int sampleridx;
+	int imgidx;
+};
+
 struct gltf_file {
 	struct buffer *buffers;
 	struct bufview *bufviews;
 	struct accessor *accessors;
 	struct image *images;
+	struct sampler *samplers;
+	struct texture *textures;
 };
 
 
@@ -76,6 +103,10 @@ static int read_data(struct mf_meshfile *mf, void *buf, unsigned long sz, const 
 		const struct mf_userio *io);
 
 static int read_image(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jimg,
+		const struct mf_userio *io);
+static int read_sampler(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jimg,
+		const struct mf_userio *io);
+static int read_texture(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jimg,
 		const struct mf_userio *io);
 static int read_material(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jmtl,
 		const struct mf_userio *io);
@@ -96,6 +127,8 @@ static struct {
 	int (*read_thing)(struct mf_meshfile*, struct gltf_file*, struct json_obj*, const struct mf_userio*);
 } gltf_thing[] = {
 	{"images", read_image},
+	{"samplers", read_sampler},
+	{"textures", read_texture},
 	{"materials", read_material},
 	{"buffers", read_buffer},
 	{"bufferViews", read_bufview},
@@ -164,10 +197,12 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 
 	/* initialize the dynamic arrays in the gltf structure */
 	gltf.images = mf_dynarr_alloc(0, sizeof *gltf.images);
+	gltf.samplers = mf_dynarr_alloc(0, sizeof *gltf.samplers);
+	gltf.textures = mf_dynarr_alloc(0, sizeof *gltf.textures);
 	gltf.buffers = mf_dynarr_alloc(0, sizeof *gltf.buffers);
 	gltf.bufviews = mf_dynarr_alloc(0, sizeof *gltf.bufviews);
 	gltf.accessors = mf_dynarr_alloc(0, sizeof *gltf.accessors);
-	if(!gltf.images || !gltf.buffers || !gltf.bufviews || !gltf.accessors) {
+	if(!gltf.images || !gltf.buffers || !gltf.bufviews || !gltf.accessors || !gltf.samplers || !gltf.textures) {
 		fprintf(stderr, "mf_load: failed to allocate dynamic array\n");
 		goto end;
 	}
@@ -196,6 +231,8 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 	res = 0;
 end:
 	mf_dynarr_free(gltf.images);
+	mf_dynarr_free(gltf.samplers);
+	mf_dynarr_free(gltf.textures);
 	mf_dynarr_free(gltf.buffers);
 	mf_dynarr_free(gltf.bufviews);
 	mf_dynarr_free(gltf.accessors);
@@ -257,13 +294,140 @@ static int read_image(struct mf_meshfile *mf, struct gltf_file *gltf, struct jso
 	return 0;
 }
 
+static int read_sampler(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jsam,
+		const struct mf_userio *io)
+{
+	struct sampler sam;
+	void *ptr;
+
+	sam.uwrap = json_lookup_int(jsam, "wrapS", GLTF_REPEAT);
+	sam.vwrap = json_lookup_int(jsam, "wrapT", GLTF_REPEAT);
+	sam.magfilt = json_lookup_int(jsam, "magFilter", GLTF_LINEAR);
+	sam.minfilt = json_lookup_int(jsam, "minFilter", GLTF_LINEAR_MIPMAP_LINEAR);
+
+	if(!(ptr = mf_dynarr_push(gltf->samplers, &sam))) {
+		fprintf(stderr, "load_gltf: failed to add sampler\n");
+		return -1;
+	}
+	gltf->samplers = ptr;
+	return 0;
+}
+
+static int read_texture(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jtex,
+		const struct mf_userio *io)
+{
+	struct texture tex;
+	void *ptr;
+
+	if((tex.imgidx = json_lookup_int(jtex, "source", -1)) < 0 ||
+			tex.imgidx >= mf_dynarr_size(gltf->images)) {
+		fprintf(stderr, "load_gltf: missing or invalid texture source\n");
+		return -1;
+	}
+
+	if((tex.sampleridx = json_lookup_int(jtex, "sampler", -1)) >= 0) {
+		if(tex.sampleridx >= mf_dynarr_size(gltf->samplers)) {
+			fprintf(stderr, "load_gltf: texture refers to invalid sampler: %d\n", tex.sampleridx);
+			return -1;
+		}
+	}
+
+	if(!(ptr = mf_dynarr_push(gltf->textures, &tex))) {
+		fprintf(stderr, "load_gltf: failed to add texture\n");
+		return -1;
+	}
+	gltf->textures = ptr;
+	return 0;
+}
+
+static int get_texture(struct gltf_file *gltf, struct mf_texmap *tex, const char *basepath, struct json_obj *jmtl)
+{
+	static struct sampler defsam = {GLTF_LINEAR, GLTF_LINEAR_MIPMAP_LINEAR, GLTF_REPEAT, GLTF_REPEAT};
+	int val;
+	struct texture *gtex;
+	struct image *img;
+	struct sampler *sam;
+	char *path;
+	struct json_arr *jarr;
+
+	if(!(path = malloc(strlen(basepath) + 64))) {
+		fprintf(stderr, "load_gltf: failed to allocate path buffer\n");
+		return -1;
+	}
+	sprintf(path, "%s.index", basepath);
+
+	if((val = json_lookup_int(jmtl, path, -1)) < 0) {
+		free(path);
+		return -1;
+	}
+	if(val >= mf_dynarr_size(gltf->textures)) {
+		fprintf(stderr, "load_gltf: material refers to invalid texture: %d\n", val);
+		free(path);
+		return -1;
+	}
+	gtex = gltf->textures + val;
+	sam = gtex->sampleridx >= 0 ? gltf->samplers + gtex->sampleridx : &defsam;
+	img = gltf->images + gtex->imgidx;
+
+	if(!(tex->name = strdup(img->fname))) {
+		fprintf(stderr, "load_gltf: failed to allocate texture name\n");
+		free(path);
+		return -1;
+	}
+	if(sam->minfilt == GLTF_NEAREST || sam->minfilt == GLTF_NEAREST_MIPMAP_NEAREST ||
+			sam->minfilt == GLTF_NEAREST_MIPMAP_LINEAR || sam->magfilt == GLTF_NEAREST) {
+		tex->ufilt = tex->vfilt = MF_TEX_NEAREST;
+	} else {
+		tex->ufilt = tex->vfilt = MF_TEX_LINEAR;
+	}
+	tex->uwrap = sam->uwrap == GLTF_CLAMP_TO_EDGE ? MF_TEX_CLAMP : MF_TEX_REPEAT;
+	tex->vwrap = sam->vwrap == GLTF_CLAMP_TO_EDGE ? MF_TEX_CLAMP : MF_TEX_REPEAT;
+
+	sprintf(path, "%s.extensions.KHR_texture_transform.offset", basepath);
+	if((jarr = json_lookup_arr(jmtl, path, 0))) {
+		if(jarr->size != 2 || jarr->val[0].type != JSON_NUM || jarr->val[1].type != JSON_NUM) {
+			fprintf(stderr, "load_gltf: invalid texture transform.offset\n");
+		} else {
+			tex->offset.x = jarr->val[0].num;
+			tex->offset.y = jarr->val[1].num;
+			tex->offset.z = 0.0f;
+		}
+	}
+	sprintf(path, "%s.extensions.KHR_texture_transform.scale", basepath);
+	if((jarr = json_lookup_arr(jmtl, path, 0))) {
+		if(jarr->size != 2 || jarr->val[0].type != JSON_NUM || jarr->val[1].type != JSON_NUM) {
+			fprintf(stderr, "load_gltf: invalid texture transform.scale\n");
+		} else {
+			tex->scale.x = jarr->val[0].num;
+			tex->scale.y = jarr->val[1].num;
+			tex->scale.z = 1.0f;
+		}
+	}
+	/* there's also KHR_texture_transform.rotation, but we don't support that for now */
+
+	free(path);
+	return 0;
+}
+
 static int read_material(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jmtl,
 		const struct mf_userio *io)
 {
+	int i;
 	struct mf_material *mtl;
 	const char *str;
 	struct json_value *jval;
 	float val;
+	static const char *texpaths[] = {
+		"pbrMetallicRoughness.baseColorTexture",
+		0, 0,
+		"pbrMetallicRoughness.metallicRoughnessTexture",
+		0,
+		"emissiveTexture",
+		0,
+		"extensions.KHR_materials_transmission.transmissionTexture",
+		0, 0,
+		"normalTexture"
+	};
 
 	if(!(mtl = mf_alloc_mtl())) {
 		fprintf(stderr, "read_material: failed to allocate material\n");
@@ -277,8 +441,6 @@ static int read_material(struct mf_meshfile *mf, struct gltf_file *gltf, struct 
 	if((jval = json_lookup(jmtl, "pbrMetallicRoughness.baseColorFactor"))) {
 		jval_to_vec(jval, &mtl->attr[MF_COLOR].val);
 	}
-	/* TODO textures */
-
 	if((val = json_lookup_num(jmtl, "pbrMetallicRoughness.roughnessFactor", -1.0)) >= 0) {
 		mtl->attr[MF_ROUGHNESS].val.x = val;
 		mtl->attr[MF_SHININESS].val.x = (1.0f - val) * 100.0f + 1.0f;
@@ -286,13 +448,24 @@ static int read_material(struct mf_meshfile *mf, struct gltf_file *gltf, struct 
 	if((val = json_lookup_num(jmtl, "pbrMetallicRoughness.metallicFactor", -1.0)) >= 0) {
 		mtl->attr[MF_METALLIC].val.x = val;
 	}
+	if((jval = json_lookup(jmtl, "emissiveFactor"))) {
+		jval_to_vec(jval, &mtl->attr[MF_EMISSIVE].val);
+	}
 	if((jval = json_lookup(jmtl, "extensions.KHR_materials_specular.specularColorFactor"))) {
 		jval_to_vec(jval, &mtl->attr[MF_SPECULAR].val);
 	}
 	if((val = json_lookup_num(jmtl, "extensions.KHR_materials_ior.ior", -1.0)) >= 0) {
 		mtl->attr[MF_IOR].val.x = val;
 	}
-	/* TODO more attributes */
+	if((val = json_lookup_num(jmtl, "extensions.KHR_materials_transmission.transmissionFactor", -1.0)) >= 0) {
+		mtl->attr[MF_TRANSMIT].val.x = val;
+	}
+
+	for(i=0; i<MF_NUM_MTLATTR; i++) {
+		if(texpaths[i]) {
+			get_texture(gltf, &mtl->attr[i].map, texpaths[i], jmtl);
+		}
+	}
 
 	mf_add_material(mf, mtl);
 	return 0;
@@ -589,7 +762,7 @@ static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 		}
 
 		if((mesh = read_prim(mf, gltf, &jprim->obj))) {
-			if(!(mesh->name = strdup(mesh_name))) {
+			if(!(mesh->name = strdup(mesh_name ? mesh_name : "unnamed mesh"))) {
 				fprintf(stderr, "load_gltf: failed to allocate mesh name\n");
 				mf_free_mesh(mesh);
 				return -1;

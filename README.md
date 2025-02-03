@@ -20,9 +20,10 @@ Here's a list of currently supported file formats, and any caveats for each one.
 
  - Wavefront OBJ
  - JTF (Just Triangle Faces): http://runtimeterror.com/tech/jtf
+ - GLTF (OpenGL Transmission Format): v2.0+, no binary yet, no embedded images.
 
 The plan is to at least support a few other formats that are reasonably easy to
-implement without adding dependencies, like: gltf, milkshape3d, ply, and 3ds.
+implement without adding dependencies, like: milkshape3d, ply, and 3ds.
 
 Using meshfile
 --------------
