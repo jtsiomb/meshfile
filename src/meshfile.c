@@ -118,6 +118,8 @@ void mf_destroy(struct mf_meshfile *mf)
 	mf_clear(mf);
 	mf_dynarr_free(mf->meshes);
 	mf_dynarr_free(mf->mtl);
+	mf_dynarr_free(mf->nodes);
+	mf_dynarr_free(mf->topnodes);
 	free(mf->name);
 	free(mf->dirname);
 	rb_free(mf->assetpath);
@@ -136,6 +138,11 @@ void mf_clear(struct mf_meshfile *mf)
 		mf_free_mtl(mf->mtl[i]);
 	}
 	mf->mtl = mf_dynarr_clear(mf->mtl);
+
+	for(i=0; i<mf_dynarr_size(mf->nodes); i++) {
+		mf_free_node(mf->nodes[i]);
+	}
+	mf->nodes = mf_dynarr_clear(mf->nodes);
 
 	rb_clear(mf->assetpath);
 }
@@ -220,6 +227,49 @@ void mf_destroy_mtl(struct mf_material *mtl)
 	}
 }
 
+struct mf_node *mf_alloc_node(void)
+{
+	struct mf_node *n;
+	if(!(n = malloc(sizeof *n))) {
+		return 0;
+	}
+	if(mf_init_node(n) == -1) {
+		free(n);
+		return 0;
+	}
+	return n;
+}
+
+void mf_free_node(struct mf_node *node)
+{
+	if(node) {
+		mf_destroy_node(node);
+		free(node);
+	}
+}
+
+int mf_init_node(struct mf_node *node)
+{
+	memset(node, 0, sizeof *node);
+	if(!(node->sub = mf_dynarr_alloc(0, sizeof *node->sub))) {
+		return -1;
+	}
+	if(!(node->meshes = mf_dynarr_alloc(0, sizeof *node->meshes))) {
+		mf_dynarr_free(node->sub);
+		return -1;
+	}
+	node->matrix[0] = node->matrix[5] = node->matrix[10] = node->matrix[15] = 1.0f;
+	return 0;
+}
+
+void mf_destroy_node(struct mf_node *node)
+{
+	if(!node) return;
+	free(node->name);
+	mf_dynarr_free(node->sub);
+	mf_dynarr_free(node->meshes);
+}
+
 const char *mf_get_name(const struct mf_meshfile *mf)
 {
 	return mf->name;
@@ -235,6 +285,16 @@ int mf_num_materials(const struct mf_meshfile *mf)
 	return mf_dynarr_size(mf->mtl);
 }
 
+int mf_num_nodes(const struct mf_meshfile *mf)
+{
+	return mf_dynarr_size(mf->nodes);
+}
+
+int mf_num_topnodes(const struct mf_meshfile *mf)
+{
+	return mf_dynarr_size(mf->topnodes);
+}
+
 struct mf_mesh *mf_get_mesh(const struct mf_meshfile *mf, int idx)
 {
 	return mf->meshes[idx];
@@ -243,6 +303,16 @@ struct mf_mesh *mf_get_mesh(const struct mf_meshfile *mf, int idx)
 struct mf_material *mf_get_material(const struct mf_meshfile *mf, int idx)
 {
 	return mf->mtl[idx];
+}
+
+struct mf_node *mf_get_node(const struct mf_meshfile *mf, int idx)
+{
+	return mf->nodes[idx];
+}
+
+struct mf_node *mf_get_topnode(const struct mf_meshfile *mf, int idx)
+{
+	return mf->topnodes[idx];
 }
 
 struct mf_mesh *mf_find_mesh(const struct mf_meshfile *mf, const char *name)
@@ -267,11 +337,25 @@ struct mf_material *mf_find_material(const struct mf_meshfile *mf, const char *n
 	return 0;
 }
 
+struct mf_node *mf_find_node(const struct mf_meshfile *mf, const char *name)
+{
+	int i, num = mf_dynarr_size(mf->nodes);
+	for(i=0; i<num; i++) {
+		if(strcmp(mf->nodes[i]->name, name) == 0) {
+			return mf->nodes[i];
+		}
+	}
+	return 0;
+}
+
 int mf_add_mesh(struct mf_meshfile *mf, struct mf_mesh *m)
 {
-	if(!(mf->meshes = mf_dynarr_push(mf->meshes, &m))) {
+	void *tmp;
+
+	if(!(tmp = mf_dynarr_push(mf->meshes, &m))) {
 		return -1;
 	}
+	mf->meshes = tmp;
 
 	if(m->aabox.vmin.x < mf->aabox.vmin.x) mf->aabox.vmin.x = m->aabox.vmin.x;
 	if(m->aabox.vmin.y < mf->aabox.vmin.y) mf->aabox.vmin.y = m->aabox.vmin.y;
@@ -284,8 +368,30 @@ int mf_add_mesh(struct mf_meshfile *mf, struct mf_mesh *m)
 
 int mf_add_material(struct mf_meshfile *mf, struct mf_material *mtl)
 {
-	if(!(mf->mtl = mf_dynarr_push(mf->mtl, &mtl))) {
+	void *tmp;
+
+	if(!(tmp = mf_dynarr_push(mf->mtl, &mtl))) {
 		return -1;
+	}
+	mf->mtl = tmp;
+	return 0;
+}
+
+int mf_add_node(struct mf_meshfile *mf, struct mf_node *n)
+{
+	void *tmp;
+
+	if(!(tmp = mf_dynarr_push(mf->nodes, &n))) {
+		return -1;
+	}
+	mf->nodes = tmp;
+
+	if(!n->parent) {
+		if(!(tmp = mf_dynarr_push(mf->topnodes, &n))) {
+			mf->nodes = mf_dynarr_pop(mf->nodes);
+			return -1;
+		}
+		mf->topnodes = tmp;
 	}
 	return 0;
 }

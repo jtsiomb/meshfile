@@ -83,7 +83,8 @@ struct mf_material {
 struct mf_node {
 	char *name;
 	struct mf_node *parent;
-	struct mf_node *clist;
+	struct mf_node **sub;
+	int num_sub;
 
 	float matrix[16];
 
@@ -148,19 +149,30 @@ void mf_free_mtl(struct mf_material *mtl);
 int mf_init_mtl(struct mf_material *mtl);
 void mf_destroy_mtl(struct mf_material *mtl);
 
+struct mf_node *mf_alloc_node(void);
+void mf_free_node(struct mf_node *node);
+int mf_init_node(struct mf_node *node);
+void mf_destroy_node(struct mf_node *node);
+
 const char *mf_get_name(const struct mf_meshfile *mf);
 
 int mf_num_meshes(const struct mf_meshfile *mf);
 int mf_num_materials(const struct mf_meshfile *mf);
+int mf_num_nodes(const struct mf_meshfile *mf);
+int mf_num_topnodes(const struct mf_meshfile *mf);
 
 struct mf_mesh *mf_get_mesh(const struct mf_meshfile *mf, int idx);
 struct mf_material *mf_get_material(const struct mf_meshfile *mf, int idx);
+struct mf_node *mf_get_node(const struct mf_meshfile *mf, int idx);
+struct mf_node *mf_get_topnode(const struct mf_meshfile *mf, int idx);
 
 struct mf_mesh *mf_find_mesh(const struct mf_meshfile *mf, const char *name);
 struct mf_material *mf_find_material(const struct mf_meshfile *mf, const char *name);
+struct mf_node *mf_find_node(const struct mf_meshfile *mf, const char *name);
 
 int mf_add_mesh(struct mf_meshfile *mf, struct mf_mesh *m);
 int mf_add_material(struct mf_meshfile *mf, struct mf_material *mtl);
+int mf_add_node(struct mf_meshfile *mf, struct mf_node *n);
 
 int mf_bounds(const struct mf_meshfile *mf, mf_aabox *bb);
 

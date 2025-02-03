@@ -42,6 +42,7 @@ struct mf_meshfile {
 	char *dirname;
 	struct mf_mesh **meshes;
 	struct mf_material **mtl;
+	struct mf_node **nodes, **topnodes;
 	mf_aabox aabox;
 
 	struct rbtree *assetpath;
