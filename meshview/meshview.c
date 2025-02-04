@@ -180,7 +180,7 @@ static void display(void)
 			setup_material(mesh->mtl);
 
 			glPushMatrix();
-			glMultMatrixf(mesh->node->matrix);
+			glMultMatrixf(mesh->node->global_matrix);
 			draw_mesh(mesh);
 			glPopMatrix();
 		}

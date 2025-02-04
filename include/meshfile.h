@@ -86,7 +86,8 @@ struct mf_node {
 	struct mf_node **child;
 	int num_child;
 
-	float matrix[16];
+	float matrix[16];			/* transformation for this node */
+	float global_matrix[16];	/* matrix * parent->global_matrix */
 
 	struct mf_mesh **meshes;	/* meshes associated with this node */
 	int num_meshes;
@@ -175,6 +176,7 @@ int mf_add_material(struct mf_meshfile *mf, struct mf_material *mtl);
 int mf_add_node(struct mf_meshfile *mf, struct mf_node *n);
 
 int mf_bounds(const struct mf_meshfile *mf, mf_aabox *bb);
+void mf_update_xform(struct mf_meshfile *mf);
 
 int mf_load(struct mf_meshfile *mf, const char *fname);
 int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io);
@@ -213,6 +215,7 @@ int mf_node_add_mesh(struct mf_node *n, struct mf_mesh *m);
 int mf_node_remove_mesh(struct mf_node *n, struct mf_mesh *m);
 int mf_node_add_child(struct mf_node *n, struct mf_node *c);
 int mf_node_remove_child(struct mf_node *n, struct mf_node *c);
+void mf_node_update_xform(struct mf_node *n);
 
 /* utility functions */
 const char *mf_find_asset(const struct mf_meshfile *mf, const char *fname);

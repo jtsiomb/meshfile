@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "meshfile.h"
 #include "mfpriv.h"
 #include "dynarr.h"
+#include "util.h"
 
 /* the order in this table is significant. It's the order used when trying to
  * open a file. wavefront obj must be last, because it can't be identified.
@@ -37,6 +38,10 @@ struct filefmt filefmt[MF_NUM_FMT] = {
 };
 
 static void assetpath_rbdelnode(struct rbnode *n, void *cls);
+
+static void init_aabox(mf_aabox *box);
+static void calc_aabox(struct mf_meshfile *mf);
+static void expand_aabox(mf_aabox *box, mf_vec3 v);
 
 static void *io_open(const char *fname, const char *mode);
 static void io_close(void *file);
@@ -108,8 +113,7 @@ int mf_init(struct mf_meshfile *mf)
 	}
 	rb_set_delete_func(mf->assetpath, assetpath_rbdelnode, 0);
 
-	mf->aabox.vmin.x = mf->aabox.vmin.y = mf->aabox.vmin.z = FLT_MAX;
-	mf->aabox.vmax.x = mf->aabox.vmax.y = mf->aabox.vmax.z = -FLT_MAX;
+	init_aabox(&mf->aabox);
 
 	mf->savefmt = mf->autofmt = -1;
 	return 0;
@@ -181,8 +185,7 @@ int mf_init_mesh(struct mf_mesh *m)
 {
 	memset(m, 0, sizeof *m);
 	m->mtl = &defmtl;
-	m->aabox.vmin.x = m->aabox.vmin.y = m->aabox.vmin.z = FLT_MAX;
-	m->aabox.vmax.x = m->aabox.vmax.y = m->aabox.vmax.z = -FLT_MAX;
+	init_aabox(&m->aabox);
 	return 0;
 }
 
@@ -268,7 +271,9 @@ int mf_init_node(struct mf_node *node)
 		mf_dynarr_free(node->child);
 		return -1;
 	}
-	node->matrix[0] = node->matrix[5] = node->matrix[10] = node->matrix[15] = 1.0f;
+
+	mf_id_matrix(node->matrix);
+	mf_id_matrix(node->global_matrix);
 	return 0;
 }
 
@@ -366,13 +371,6 @@ int mf_add_mesh(struct mf_meshfile *mf, struct mf_mesh *m)
 		return -1;
 	}
 	mf->meshes = tmp;
-
-	if(m->aabox.vmin.x < mf->aabox.vmin.x) mf->aabox.vmin.x = m->aabox.vmin.x;
-	if(m->aabox.vmin.y < mf->aabox.vmin.y) mf->aabox.vmin.y = m->aabox.vmin.y;
-	if(m->aabox.vmin.z < mf->aabox.vmin.z) mf->aabox.vmin.z = m->aabox.vmin.z;
-	if(m->aabox.vmax.x > mf->aabox.vmax.x) mf->aabox.vmax.x = m->aabox.vmax.x;
-	if(m->aabox.vmax.y > mf->aabox.vmax.y) mf->aabox.vmax.y = m->aabox.vmax.y;
-	if(m->aabox.vmax.z > mf->aabox.vmax.z) mf->aabox.vmax.z = m->aabox.vmax.z;
 	return 0;
 }
 
@@ -415,6 +413,14 @@ int mf_bounds(const struct mf_meshfile *mf, mf_aabox *bb)
 	return 0;
 }
 
+void mf_update_xform(struct mf_meshfile *mf)
+{
+	int i, num = mf_num_topnodes(mf);
+	for(i=0; i<num; i++) {
+		mf_node_update_xform(mf->topnodes[i]);
+	}
+}
+
 int mf_load(struct mf_meshfile *mf, const char *fname)
 {
 	int res;
@@ -440,6 +446,9 @@ int mf_load(struct mf_meshfile *mf, const char *fname)
 
 	res = mf_load_userio(mf, &io);
 	fclose(fp);
+
+	calc_aabox(mf);
+	mf_update_xform(mf);
 	return res;
 }
 
@@ -556,8 +565,7 @@ void mf_clear_mesh(struct mf_mesh *m)
 	mf_dynarr_free(m->color); m->color = 0;
 	mf_dynarr_free(m->faces); m->faces = 0;
 
-	m->aabox.vmin.x = m->aabox.vmin.y = m->aabox.vmin.z = FLT_MAX;
-	m->aabox.vmax.x = m->aabox.vmax.y = m->aabox.vmax.z = -FLT_MAX;
+	init_aabox(&m->aabox);
 
 	m->num_verts = m->num_faces = 0;
 }
@@ -890,6 +898,21 @@ int mf_node_remove_child(struct mf_node *n, struct mf_node *c)
 	return 0;
 }
 
+void mf_node_update_xform(struct mf_node *n)
+{
+	int i;
+
+	if(n->parent) {
+		mf_mult_matrix(n->global_matrix, n->matrix, n->parent->global_matrix);
+	} else {
+		memcpy(n->global_matrix, n->matrix, sizeof n->global_matrix);
+	}
+
+	for(i=0; i<n->num_child; i++) {
+		mf_node_update_xform(n->child[i]);
+	}
+}
+
 /* utility functions */
 const char *mf_find_asset(const struct mf_meshfile *mf, const char *fname)
 {
@@ -935,6 +958,40 @@ static void assetpath_rbdelnode(struct rbnode *n, void *cls)
 	free(n->data);
 }
 
+static void init_aabox(mf_aabox *box)
+{
+	box->vmin.x = box->vmin.y = box->vmin.z = FLT_MAX;
+	box->vmax.x = box->vmax.y = box->vmax.z = -FLT_MAX;
+}
+
+static void calc_aabox(struct mf_meshfile *mf)
+{
+	long j;
+	int i, nmeshes = mf_num_meshes(mf);
+	struct mf_mesh *m;
+	mf_vec3 v;
+
+	init_aabox(&mf->aabox);
+
+	for(i=0; i<nmeshes; i++) {
+		m = mf_get_mesh(mf, i);
+		for(j=0; j<m->num_verts; j++) {
+			mf_transform(&v, m->vertex + j, m->node->global_matrix);
+
+			expand_aabox(&mf->aabox, v);
+		}
+	}
+}
+
+static void expand_aabox(mf_aabox *box, mf_vec3 v)
+{
+	if(v.x < box->vmin.x) box->vmin.x = v.x;
+	if(v.y < box->vmin.y) box->vmin.y = v.y;
+	if(v.z < box->vmin.z) box->vmin.z = v.z;
+	if(v.x > box->vmax.x) box->vmax.x = v.x;
+	if(v.y > box->vmax.y) box->vmax.y = v.y;
+	if(v.z > box->vmax.z) box->vmax.z = v.z;
+}
 
 /* file I/O functions */
 

@@ -23,6 +23,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 long mf_calc_b64_size(const char *s);
 void *mf_b64decode(const char *str, void *buf, long *bufsz);
 
+void mf_transform(mf_vec3 *dest, const mf_vec3 *v, const float *m);
+void mf_mult_matrix(float *dest, const float *a, const float *b);
+void mf_id_matrix(float *m);
+void mf_trans_matrix(float *m, const mf_vec3 *v);
+void mf_scale_matrix(float *m, const mf_vec3 *v);
+void mf_quat_matrix(float *m, const mf_vec4 *q);
 void mf_prs_matrix(float *mat, const mf_vec3 *p, const mf_vec4 *r, const mf_vec3 *s);
 
 #endif	/* UTIL_H_ */

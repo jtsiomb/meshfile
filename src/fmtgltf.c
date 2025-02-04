@@ -261,6 +261,9 @@ end:
 	mf_dynarr_free(gltf.images);
 	mf_dynarr_free(gltf.samplers);
 	mf_dynarr_free(gltf.textures);
+	for(i=0; i<mf_dynarr_size(gltf.buffers); i++) {
+		free(gltf.buffers[i].data);
+	}
 	mf_dynarr_free(gltf.buffers);
 	mf_dynarr_free(gltf.bufviews);
 	mf_dynarr_free(gltf.accessors);
