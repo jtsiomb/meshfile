@@ -56,6 +56,7 @@ int mf_load_jtf(struct mf_meshfile *mf, const struct mf_userio *io)
 	struct jtf_header hdr;
 	struct jtf_face face;
 	struct mf_mesh *mesh;
+	struct mf_node *node;
 
 	if(io->read(io->file, &hdr, sizeof hdr) < sizeof hdr) {
 		return -1;
@@ -95,9 +96,16 @@ int mf_load_jtf(struct mf_meshfile *mf, const struct mf_userio *io)
 		vidx += 3;
 	}
 
+	if(!(node = mf_alloc_node())) {
+		goto err;
+	}
+	if(mf_node_add_mesh(node, mesh) == -1) {
+		goto err;
+	}
 	if(mf_add_mesh(mf, mesh) == -1) {
 		goto err;
 	}
+	mf_add_node(mf, node);
 	return 0;
 
 err:

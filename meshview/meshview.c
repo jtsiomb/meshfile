@@ -153,7 +153,11 @@ static void display(void)
 	for(i=0; i<mf_num_meshes(mf); i++) {
 		mesh = mf_get_mesh(mf, i);
 		setup_material(mesh->mtl);
-		draw_mesh(mf_get_mesh(mf, i));
+
+		glPushMatrix();
+		glMultMatrixf(mesh->node->matrix);
+		draw_mesh(mesh);
+		glPopMatrix();
 	}
 
 	glColor3f(0, 1, 0);

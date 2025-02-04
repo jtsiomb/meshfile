@@ -18,7 +18,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #ifndef UTIL_H_
 #define UTIL_H_
 
+#include "meshfile.h"
+
 long mf_calc_b64_size(const char *s);
 void *mf_b64decode(const char *str, void *buf, long *bufsz);
+
+void mf_prs_matrix(float *mat, const mf_vec3 *p, const mf_vec4 *r, const mf_vec3 *s);
 
 #endif	/* UTIL_H_ */

@@ -106,3 +106,10 @@ static int b64bits(int c)
 
 	return -1;
 }
+
+void mf_prs_matrix(float *mat, const mf_vec3 *p, const mf_vec4 *r, const mf_vec3 *s)
+{
+	/* TODO */
+	memset(mat, 0, 16 * sizeof *mat);
+	mat[0] = mat[5] = mat[10] = mat[15] = 1.0f;
+}

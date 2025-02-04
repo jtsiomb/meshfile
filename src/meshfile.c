@@ -91,18 +91,20 @@ int mf_init(struct mf_meshfile *mf)
 	memset(mf, 0, sizeof *mf);
 
 	if(!(mf->meshes = mf_dynarr_alloc(0, sizeof *mf->meshes))) {
-		return -1;
+		goto err;
 	}
 	if(!(mf->mtl = mf_dynarr_alloc(0, sizeof *mf->mtl))) {
-		mf_dynarr_free(mf->meshes);
-		mf->meshes = 0;
-		return -1;
+		goto err;
+	}
+	if(!(mf->nodes = mf_dynarr_alloc(0, sizeof *mf->nodes))) {
+		goto err;
+	}
+	if(!(mf->topnodes = mf_dynarr_alloc(0, sizeof *mf->topnodes))) {
+		goto err;
 	}
 
 	if(!(mf->assetpath = rb_create(RB_KEY_STRING))) {
-		mf_dynarr_free(mf->meshes);
-		mf_dynarr_free(mf->mtl);
-		return -1;
+		goto err;
 	}
 	rb_set_delete_func(mf->assetpath, assetpath_rbdelnode, 0);
 
@@ -111,6 +113,13 @@ int mf_init(struct mf_meshfile *mf)
 
 	mf->savefmt = mf->autofmt = -1;
 	return 0;
+
+err:
+	mf_dynarr_free(mf->meshes); mf->meshes = 0;
+	mf_dynarr_free(mf->mtl); mf->mtl = 0;
+	mf_dynarr_free(mf->nodes); mf->nodes = 0;
+	mf_dynarr_free(mf->topnodes); mf->topnodes = 0;
+	return -1;
 }
 
 void mf_destroy(struct mf_meshfile *mf)
@@ -143,6 +152,7 @@ void mf_clear(struct mf_meshfile *mf)
 		mf_free_node(mf->nodes[i]);
 	}
 	mf->nodes = mf_dynarr_clear(mf->nodes);
+	mf->topnodes = mf_dynarr_clear(mf->topnodes);
 
 	rb_clear(mf->assetpath);
 }
@@ -251,11 +261,11 @@ void mf_free_node(struct mf_node *node)
 int mf_init_node(struct mf_node *node)
 {
 	memset(node, 0, sizeof *node);
-	if(!(node->sub = mf_dynarr_alloc(0, sizeof *node->sub))) {
+	if(!(node->child = mf_dynarr_alloc(0, sizeof *node->child))) {
 		return -1;
 	}
 	if(!(node->meshes = mf_dynarr_alloc(0, sizeof *node->meshes))) {
-		mf_dynarr_free(node->sub);
+		mf_dynarr_free(node->child);
 		return -1;
 	}
 	node->matrix[0] = node->matrix[5] = node->matrix[10] = node->matrix[15] = 1.0f;
@@ -266,7 +276,7 @@ void mf_destroy_node(struct mf_node *node)
 {
 	if(!node) return;
 	free(node->name);
-	mf_dynarr_free(node->sub);
+	mf_dynarr_free(node->child);
 	mf_dynarr_free(node->meshes);
 }
 
@@ -805,6 +815,79 @@ void mf_colorv(struct mf_mesh *m, float *v)
 	im->col.z = v[2];
 	im->col.w = v[3];
 	im->attrmask |= COLOR;
+}
+
+/* node functions */
+int mf_node_add_mesh(struct mf_node *n, struct mf_mesh *m)
+{
+	void *tmp;
+
+	if(!(tmp = mf_dynarr_push(n->meshes, &m))) {
+		return -1;
+	}
+	n->meshes = tmp;
+	n->num_meshes = mf_dynarr_size(n->meshes);
+
+	if(m->node) {
+		mf_node_remove_mesh(m->node, m);
+	}
+	m->node = n;
+	return 0;
+}
+
+int mf_node_remove_mesh(struct mf_node *n, struct mf_mesh *m)
+{
+	int i;
+
+	n->num_meshes = mf_dynarr_size(n->meshes);
+	for(i=0; i<n->num_meshes; i++) {
+		if(n->meshes[i] == m) {
+			n->meshes[i] = n->meshes[--n->num_meshes];
+			n->meshes = mf_dynarr_pop(n->meshes);
+			break;
+		}
+	}
+
+	if(m->node == n) {
+		m->node = 0;
+	}
+	return 0;
+}
+
+int mf_node_add_child(struct mf_node *n, struct mf_node *c)
+{
+	void *tmp;
+
+	if(!(tmp = mf_dynarr_push(n->child, &c))) {
+		return -1;
+	}
+	n->child = tmp;
+	n->num_child = mf_dynarr_size(n->child);
+
+	if(c->parent) {
+		mf_node_remove_child(c->parent, c);
+	}
+	c->parent = n;
+	return 0;
+}
+
+int mf_node_remove_child(struct mf_node *n, struct mf_node *c)
+{
+	int i;
+
+	n->num_child = mf_dynarr_size(n->child);
+	for(i=0; i<n->num_child; i++) {
+		if(n->child[i] == c) {
+			n->child[i] = n->child[--n->num_child];
+			n->child = mf_dynarr_pop(n->child);
+			break;
+		}
+	}
+
+	if(c->parent == n) {
+		c->parent = 0;
+	}
+	return 0;
 }
 
 /* utility functions */

@@ -83,8 +83,8 @@ struct mf_material {
 struct mf_node {
 	char *name;
 	struct mf_node *parent;
-	struct mf_node **sub;
-	int num_sub;
+	struct mf_node **child;
+	int num_child;
 
 	float matrix[16];
 
@@ -207,6 +207,12 @@ void mf_normalv(struct mf_mesh *m, float *v);
 void mf_tangentv(struct mf_mesh *m, float *v);
 void mf_texcooordv(struct mf_mesh *m, float *v);
 void mf_colorv(struct mf_mesh *m, float *v);
+
+/* node functions */
+int mf_node_add_mesh(struct mf_node *n, struct mf_mesh *m);
+int mf_node_remove_mesh(struct mf_node *n, struct mf_mesh *m);
+int mf_node_add_child(struct mf_node *n, struct mf_node *c);
+int mf_node_remove_child(struct mf_node *n, struct mf_node *c);
 
 /* utility functions */
 const char *mf_find_asset(const struct mf_meshfile *mf, const char *fname);

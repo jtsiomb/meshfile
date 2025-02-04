@@ -253,6 +253,8 @@ end:
 
 static int mesh_done(struct mf_meshfile *mf, struct mf_mesh *mesh)
 {
+	struct mf_node *node = 0;
+
 	if(!mesh->faces || mf_dynarr_empty(mesh->faces)) {
 		return -1;
 	}
@@ -270,13 +272,27 @@ static int mesh_done(struct mf_meshfile *mf, struct mf_mesh *mesh)
 		}
 	}
 
+	/* also allocate a node for it */
+	if(!(node = mf_alloc_node())) {
+		fprintf(stderr, "mf_load: failed to allocate mesh node\n");
+		goto reset_mesh;
+	}
+
+	if(mf_node_add_mesh(node, mesh) == -1) {
+		fprintf(stderr, "mf_load: failed to add mesh to node\n");
+		goto reset_mesh;
+	}
+
 	if(mf_add_mesh(mf, mesh) == -1) {
 		fprintf(stderr, "mf_load: failed to add mesh\n");
 		goto reset_mesh;
 	}
+	mf_add_node(mf, node);
+
 	return 0;
 
 reset_mesh:
+	mf_free_node(node);
 	mf_destroy_mesh(mesh);
 	mf_init_mesh(mesh);
 	return -1;
