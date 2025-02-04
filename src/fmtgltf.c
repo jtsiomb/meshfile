@@ -90,11 +90,9 @@ struct texture {
 };
 
 struct node {
-	char *name;
 	int meshidx;
 	int *cidx;
-	float matrix[16];
-
+	int num_child;
 	struct mf_node *mfnode;
 };
 
@@ -133,6 +131,8 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jprim,
 		const struct mf_userio *io);
 
+static int proc_node(struct node *nodes, int nidx);
+
 static int jarr_to_vec(struct json_arr *jarr, mf_vec4 *vec);
 static int jval_to_vec(struct json_value *jval, mf_vec4 *vec);
 
@@ -157,6 +157,7 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 {
 	int res = -1;
 	long i, j, filesz;
+	int num_nodes;
 	char *filebuf;
 	struct json_obj root;
 	struct json_value *jval;
@@ -245,6 +246,16 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 		}
 	}
 
+	/* process nodes and construct hierarchy */
+	num_nodes = mf_dynarr_size(gltf.nodes);
+	for(i=0; i<num_nodes; i++) {
+		proc_node(gltf.nodes, i);
+	}
+	for(i=0; i<num_nodes; i++) {
+		mf_add_node(mf, gltf.nodes[i].mfnode);
+		gltf.nodes[i].mfnode = 0;
+	}
+
 	res = 0;
 end:
 	mf_dynarr_free(gltf.images);
@@ -253,11 +264,34 @@ end:
 	mf_dynarr_free(gltf.buffers);
 	mf_dynarr_free(gltf.bufviews);
 	mf_dynarr_free(gltf.accessors);
+	for(i=0; i<mf_dynarr_size(gltf.nodes); i++) {
+		free(gltf.nodes[i].cidx);
+		mf_free_node(gltf.nodes[i].mfnode);
+	}
 	mf_dynarr_free(gltf.nodes);
 	json_destroy_obj(&root);
 	return res;
 }
 
+static int proc_node(struct node *nodes, int nidx)
+{
+	int i, num_nodes = mf_dynarr_size(nodes);
+	struct node *n = nodes + nidx;
+
+	if(!n->cidx) return 0;
+
+	for(i=0; i<n->num_child; i++) {
+		if(n->cidx[i] >= num_nodes) {
+			fprintf(stderr, "load_gltf: invalid child node reference: %d\n", n->cidx[i]);
+			return -1;
+		}
+		if(mf_node_add_child(n->mfnode, nodes[n->cidx[i]].mfnode) == -1) {
+			fprintf(stderr, "load_gltf: failed to add child node\n");
+			return -1;
+		}
+	}
+	return 0;
+}
 
 static int read_data(struct mf_meshfile *mf, void *buf, unsigned long sz, const char *str,
 		const struct mf_userio *io)
@@ -607,8 +641,16 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 	struct json_arr *arr;
 	mf_vec3 pos = {0}, scale = {1, 1, 1};
 	mf_vec4 rot = {0, 0, 0, 1};
+	struct mf_node *mfnode = 0;
 
-	if(!(node.name = strdup(json_lookup_str(jnode, "name", "unnamed node")))) {
+
+	if(!(mfnode = mf_alloc_node())) {
+		fprintf(stderr, "load_gltf: failed to allocate node\n");
+		return -1;
+	}
+	node.mfnode = mfnode;
+
+	if(!(mfnode->name = strdup(json_lookup_str(jnode, "name", "unnamed node")))) {
 		fprintf(stderr, "load_gltf: failed to allocate node name\n");
 		return -1;
 	}
@@ -628,7 +670,7 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 				fprintf(stderr, "load_gltf: node matrix elements are of invalid type\n");
 				goto err;
 			}
-			node.matrix[i] = arr->val[i].num;
+			mfnode->matrix[i] = arr->val[i].num;
 		}
 	} else {
 		/* otherwise see if we have translation/rotation/scaling */
@@ -650,7 +692,7 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 				goto err;
 			}
 		}
-		mf_prs_matrix(node.matrix, &pos, &rot, &scale);
+		mf_prs_matrix(mfnode->matrix, &pos, &rot, &scale);
 	}
 
 	/* read children node indices */
@@ -660,7 +702,8 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 			goto err;
 		}
 		arr = &jitem->val.arr;
-		if(!(node.cidx = malloc(arr->size * sizeof *node.cidx))) {
+		node.num_child = arr->size;
+		if(!(node.cidx = malloc(node.num_child * sizeof *node.cidx))) {
 			fprintf(stderr, "load_gltf: failed to allocate node children array\n");
 			goto err;
 		}
@@ -674,11 +717,6 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 		}
 	}
 
-	if(!(node.mfnode = mf_alloc_node())) {
-		fprintf(stderr, "load_gltf: failed to allocate node\n");
-		goto err;
-	}
-
 	if(!(ptr = mf_dynarr_push(gltf->nodes, &node))) {
 		fprintf(stderr, "load_gltf: failed to add node\n");
 		goto err;
@@ -687,9 +725,8 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 	return 0;
 
 err:
-	free(node.name);
 	free(node.cidx);
-	mf_free_node(node.mfnode);
+	mf_free_node(mfnode);
 	return -1;
 }
 

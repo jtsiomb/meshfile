@@ -41,6 +41,7 @@ static float znear = 0.5, zfar = 500.0;
 static int mouse_x, mouse_y;
 static int bnstate[8];
 static int wire, zup, use_tex = 1;
+static int use_nodes = 1;
 static struct mf_meshfile *mf;
 
 static long total_faces;
@@ -135,6 +136,25 @@ static void cleanup(void)
 	mf_free(mf);
 }
 
+static void render_node_tree(struct mf_node *n)
+{
+	int i;
+
+	glPushMatrix();
+	glMultMatrixf(n->matrix);
+
+	for(i=0; i<n->num_meshes; i++) {
+		setup_material(n->meshes[i]->mtl);
+		draw_mesh(n->meshes[i]);
+	}
+
+	for(i=0; i<n->num_child; i++) {
+		render_node_tree(n->child[i]);
+	}
+
+	glPopMatrix();
+}
+
 static void display(void)
 {
 	int i;
@@ -150,14 +170,20 @@ static void display(void)
 	if(zup) glRotatef(90, 1, 0, 0);
 	glTranslatef(-cam_pos[0], -cam_pos[1], -cam_pos[2]);
 
-	for(i=0; i<mf_num_meshes(mf); i++) {
-		mesh = mf_get_mesh(mf, i);
-		setup_material(mesh->mtl);
+	if(use_nodes) {
+		for(i=0; i<mf_num_topnodes(mf); i++) {
+			render_node_tree(mf_get_topnode(mf, i));
+		}
+	} else {
+		for(i=0; i<mf_num_meshes(mf); i++) {
+			mesh = mf_get_mesh(mf, i);
+			setup_material(mesh->mtl);
 
-		glPushMatrix();
-		glMultMatrixf(mesh->node->matrix);
-		draw_mesh(mesh);
-		glPopMatrix();
+			glPushMatrix();
+			glMultMatrixf(mesh->node->matrix);
+			draw_mesh(mesh);
+			glPopMatrix();
+		}
 	}
 
 	glColor3f(0, 1, 0);
@@ -214,14 +240,7 @@ static void draw_mesh(struct mf_mesh *m)
 		m->udata = (void*)(intptr_t)dlist;
 	}
 
-	if(m->node) {
-		glPushMatrix();
-		glMultMatrixf(m->node->matrix);
-		glCallList(dlist);
-		glPopMatrix();
-	} else {
-		glCallList(dlist);
-	}
+	glCallList(dlist);
 }
 
 static void setup_material(struct mf_material *mtl)
@@ -279,9 +298,24 @@ static void reshape(int x, int y)
 
 static void keypress(unsigned char key, int x, int y)
 {
+	static int saved_win_xsz, saved_win_ysz;
+
 	switch(key) {
 	case 27:
 		exit(0);
+
+	case '\r':
+		if(glutGetModifiers() & GLUT_ACTIVE_ALT) {
+			if(saved_win_xsz) {
+				glutReshapeWindow(saved_win_xsz, saved_win_ysz);
+				saved_win_ysz = saved_win_ysz = 0;
+			} else {
+				saved_win_xsz = win_width;
+				saved_win_ysz = win_height;
+				glutFullScreen();
+			}
+		}
+		break;
 
 	case 't':
 		use_tex ^= 1;
@@ -308,6 +342,11 @@ static void keypress(unsigned char key, int x, int y)
 
 	case 'z':
 		zup ^= 1;
+		glutPostRedisplay();
+		break;
+
+	case 'n':
+		use_nodes ^= 1;
 		glutPostRedisplay();
 		break;
 
