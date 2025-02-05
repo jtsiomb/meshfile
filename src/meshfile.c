@@ -447,8 +447,8 @@ int mf_load(struct mf_meshfile *mf, const char *fname)
 	res = mf_load_userio(mf, &io);
 	fclose(fp);
 
-	calc_aabox(mf);
 	mf_update_xform(mf);
+	calc_aabox(mf);
 	return res;
 }
 
@@ -903,7 +903,7 @@ void mf_node_update_xform(struct mf_node *n)
 	int i;
 
 	if(n->parent) {
-		mf_mult_matrix(n->global_matrix, n->matrix, n->parent->global_matrix);
+		mf_mult_matrix(n->global_matrix, n->parent->global_matrix, n->matrix);
 	} else {
 		memcpy(n->global_matrix, n->matrix, sizeof n->global_matrix);
 	}

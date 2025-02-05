@@ -19,17 +19,21 @@
 #include "imago2.h"
 #include "meshfile.h"
 
+#define FONT	GLUT_BITMAP_HELVETICA_18
+
 static int init(void);
 static void cleanup(void);
 static void display(void);
 static void draw_mesh(struct mf_mesh *m);
 static void setup_material(struct mf_material *mtl);
 static void reset_view(void);
+static void draw_aabox(const mf_aabox *aabb);
 static void reshape(int x, int y);
 static void keypress(unsigned char key, int x, int y);
 static void skeypress(int key, int x, int y);
 static void mouse(int bn, int st, int x, int y);
 static void motion(int x, int y);
+static void menuact(int id);
 static void glprintf(int x, int y, const char *fmt, ...);
 static int parse_args(int argc, char **argv);
 
@@ -42,6 +46,7 @@ static int mouse_x, mouse_y;
 static int bnstate[8];
 static int wire, zup, use_tex = 1;
 static int use_nodes = 1;
+static int show_bounds;
 static struct mf_meshfile *mf;
 
 static long total_faces;
@@ -157,8 +162,9 @@ static void render_node_tree(struct mf_node *n)
 
 static void display(void)
 {
-	int i;
+	int i, x;
 	struct mf_mesh *mesh;
+	mf_aabox aabb;
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -186,9 +192,25 @@ static void display(void)
 		}
 	}
 
+	if(show_bounds) {
+		glPushAttrib(GL_ENABLE_BIT);
+		glDisable(GL_LIGHTING);
+
+		glColor3f(1, 0.6, 0.1);
+		mf_bounds(mf, &aabb);
+		draw_aabox(&aabb);
+
+		glPopAttrib();
+	}
+
 	glColor3f(0, 1, 0);
 	glprintf(10, 20, "%s - %d meshes, %ld polygons", basename, mf_num_meshes(mf),
 			total_faces);
+	glprintf(10, 40, "nodes: %ld roots (%ld total)", mf_num_topnodes(mf), mf_num_nodes(mf));
+
+	x = -(win_width - 10);	/* negative for right-align */
+	glprintf(x, 20, "draw mode: %s", use_nodes ? "nodes" : "meshes");
+	glprintf(x, 40, "view pos: %.2f %.2f %.2f, dist: %.1f", cam_pos[0], cam_pos[1], cam_pos[2], cam_dist);
 
 	glutSwapBuffers();
 	assert(glGetError() == GL_NO_ERROR);
@@ -277,12 +299,45 @@ static void reset_view(void)
 	dz = bbox.vmax.z - bbox.vmin.z;
 
 	cam_dist = sqrt(dx * dx + dy * dy + dz * dz) * 0.75f;
-	zfar = cam_dist * 4.0f;
+	zfar = cam_dist * 50.0f;
 	znear = zfar * 0.001;
 	if(znear < 0.1) znear = 0.1;
 	/* force recalc projection */
 	if(win_width > 0) reshape(win_width, win_height);
 }
+
+static void draw_aabox(const mf_aabox *aabb)
+{
+	glBegin(GL_LINES);
+	glVertex3f(aabb->vmin.x, aabb->vmin.y, aabb->vmin.z);
+	glVertex3f(aabb->vmax.x, aabb->vmin.y, aabb->vmin.z);
+	glVertex3f(aabb->vmin.x, aabb->vmin.y, aabb->vmax.z);
+	glVertex3f(aabb->vmax.x, aabb->vmin.y, aabb->vmax.z);
+	glVertex3f(aabb->vmin.x, aabb->vmax.y, aabb->vmin.z);
+	glVertex3f(aabb->vmax.x, aabb->vmax.y, aabb->vmin.z);
+	glVertex3f(aabb->vmin.x, aabb->vmax.y, aabb->vmax.z);
+	glVertex3f(aabb->vmax.x, aabb->vmax.y, aabb->vmax.z);
+
+	glVertex3f(aabb->vmin.x, aabb->vmin.y, aabb->vmin.z);
+	glVertex3f(aabb->vmin.x, aabb->vmax.y, aabb->vmin.z);
+	glVertex3f(aabb->vmin.x, aabb->vmin.y, aabb->vmax.z);
+	glVertex3f(aabb->vmin.x, aabb->vmax.y, aabb->vmax.z);
+	glVertex3f(aabb->vmin.x, aabb->vmin.y, aabb->vmin.z);
+	glVertex3f(aabb->vmin.x, aabb->vmin.y, aabb->vmax.z);
+	glVertex3f(aabb->vmin.x, aabb->vmax.y, aabb->vmin.z);
+	glVertex3f(aabb->vmin.x, aabb->vmax.y, aabb->vmax.z);
+
+	glVertex3f(aabb->vmax.x, aabb->vmin.y, aabb->vmin.z);
+	glVertex3f(aabb->vmax.x, aabb->vmax.y, aabb->vmin.z);
+	glVertex3f(aabb->vmax.x, aabb->vmin.y, aabb->vmax.z);
+	glVertex3f(aabb->vmax.x, aabb->vmax.y, aabb->vmax.z);
+	glVertex3f(aabb->vmax.x, aabb->vmin.y, aabb->vmin.z);
+	glVertex3f(aabb->vmax.x, aabb->vmin.y, aabb->vmax.z);
+	glVertex3f(aabb->vmax.x, aabb->vmax.y, aabb->vmin.z);
+	glVertex3f(aabb->vmax.x, aabb->vmax.y, aabb->vmax.z);
+	glEnd();
+}
+
 
 static void reshape(int x, int y)
 {
@@ -347,6 +402,11 @@ static void keypress(unsigned char key, int x, int y)
 
 	case 'n':
 		use_nodes ^= 1;
+		glutPostRedisplay();
+		break;
+
+	case 'b':
+		show_bounds ^= 1;
 		glutPostRedisplay();
 		break;
 
@@ -436,6 +496,15 @@ static void motion(int x, int y)
 	}
 }
 
+static int text_width(const char *s)
+{
+	int res = 0;
+	while(*s) {
+		res += glutBitmapWidth(FONT, *s++);
+	}
+	return res;
+}
+
 static void glprintf(int x, int y, const char *fmt, ...)
 {
 	va_list ap;
@@ -446,6 +515,10 @@ static void glprintf(int x, int y, const char *fmt, ...)
 	vsnprintf(buf, sizeof buf, fmt, ap);
 	va_end(ap);
 	s = buf;
+
+	if(x < 0) {
+		x = -x - text_width(buf);
+	}
 
 	glPushAttrib(GL_ENABLE_BIT);
 	glDisable(GL_LIGHTING);
@@ -461,7 +534,7 @@ static void glprintf(int x, int y, const char *fmt, ...)
 
 	glRasterPos2i(x, y);
 	while(*s) {
-		glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *s++);
+		glutBitmapCharacter(FONT, *s++);
 	}
 
 	glPopMatrix();
