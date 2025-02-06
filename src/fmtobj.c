@@ -207,7 +207,8 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 				fprintf(stderr, "mf_load: failed to allocate mesh\n");
 				goto end;
 			}
-			if(!(mesh->name = strdup(clean_line(line + 2)))) {
+			mesh->name = clean_line(line + 1);
+			if(!(mesh->name = strdup(mesh->name ? mesh->name : "unnamed mesh"))) {
 				fprintf(stderr, "mf_load: failed to allocate mesh name\n");
 				goto end;
 			}

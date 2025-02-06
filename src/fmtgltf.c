@@ -90,7 +90,6 @@ struct texture {
 };
 
 struct node {
-	int meshidx;
 	int *cidx;
 	int num_child;
 	struct mf_node *mfnode;
@@ -147,8 +146,8 @@ static struct {
 	{"buffers", read_buffer},
 	{"bufferViews", read_bufview},
 	{"accessors", read_accessor},
-	{"nodes", read_node},
 	{"meshes", read_mesh},
+	{"nodes", read_node},
 	{0, 0}
 };
 
@@ -157,7 +156,7 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 {
 	int res = -1;
 	long i, j, filesz;
-	int num_nodes;
+	int num_nodes, num_meshes;
 	char *filebuf;
 	struct json_obj root;
 	struct json_value *jval;
@@ -244,6 +243,12 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 				gltf_thing[i].read_thing(mf, &gltf, &jval->obj, io);
 			}
 		}
+	}
+
+	/* clear all mesh index numbers from mesh udata */
+	num_meshes = mf_num_meshes(mf);
+	for(i=0; i<num_meshes; i++) {
+		mf_get_mesh(mf, i)->udata = 0;
 	}
 
 	/* process nodes and construct hierarchy */
@@ -637,7 +642,7 @@ static int read_accessor(struct mf_meshfile *mf, struct gltf_file *gltf, struct 
 static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jnode,
 		const struct mf_userio *io)
 {
-	int i;
+	int i, nmeshes, meshidx;
 	struct node node = {0};
 	void *ptr;
 	struct json_item *jitem;
@@ -645,6 +650,7 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 	mf_vec3 pos = {0}, scale = {1, 1, 1};
 	mf_vec4 rot = {0, 0, 0, 1};
 	struct mf_node *mfnode = 0;
+	struct mf_mesh *mesh;
 
 
 	if(!(mfnode = mf_alloc_node())) {
@@ -658,7 +664,20 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 		return -1;
 	}
 
-	node.meshidx = json_lookup_int(jnode, "mesh", -1);
+	if((meshidx = json_lookup_int(jnode, "mesh", -1)) >= 0) {
+		/* add all meshes with the matching mesh index to this node */
+		nmeshes = mf_num_meshes(mf);
+		for(i=0; i<nmeshes; i++) {
+			mesh = mf->meshes[i];
+			/* udata was hijacked to keep the mesh index while loading */
+			if((intptr_t)mesh->udata == meshidx) {
+				if(mf_node_add_mesh(mfnode, mesh) == -1) {
+					fprintf(stderr, "load_gltf: failed to add mesh to node\n");
+					goto err;
+				}
+			}
+		}
+	}
 
 	if((jitem = json_find_item(jnode, "matrix"))) {
 		/* if there is a matrix property, use it */
@@ -893,18 +912,6 @@ err:
 	return 0;
 }
 
-static struct mf_node *find_mesh_node(struct gltf_file *gltf, int meshidx)
-{
-	int i, num = mf_dynarr_size(gltf->nodes);
-
-	for(i=0; i<num; i++) {
-		if(gltf->nodes[i].meshidx == meshidx) {
-			return gltf->nodes[i].mfnode;
-		}
-	}
-	return 0;
-}
-
 static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jmesh,
 		const struct mf_userio *io)
 {
@@ -913,7 +920,6 @@ static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 	struct json_value *jprim;
 	const char *mesh_name = json_lookup_str(jmesh, "name", 0);
 	struct mf_mesh *mesh;
-	struct mf_node *node;
 
 	if(!(jitem = json_find_item(jmesh, "primitives")) || jitem->val.type != JSON_ARR) {
 		fprintf(stderr, "load_gltf: mesh missing or invalid primitives array\n");
@@ -934,16 +940,7 @@ static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 				mf_free_mesh(mesh);
 				return -1;
 			}
-
-			if(!(node = find_mesh_node(gltf, gltf->meshcount))) {
-				if(!(node = mf_alloc_node())) {
-					fprintf(stderr, "load_gltf: failed to allocate mesh node\n");
-					mf_free_mesh(mesh);
-					return -1;
-				}
-			}
-			mf_node_add_mesh(node, mesh);
-
+			mesh->udata = (void*)(intptr_t)gltf->meshcount;
 			mf_add_mesh(mf, mesh);
 		}
 	}

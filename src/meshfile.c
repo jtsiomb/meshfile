@@ -828,18 +828,21 @@ void mf_colorv(struct mf_mesh *m, float *v)
 /* node functions */
 int mf_node_add_mesh(struct mf_node *n, struct mf_mesh *m)
 {
+	int i;
 	void *tmp;
+
+	n->num_meshes = mf_dynarr_size(n->meshes);
+	for(i=0; i<n->num_meshes; i++) {
+		if(n->meshes[i] == m) {
+			return 0;
+		}
+	}
 
 	if(!(tmp = mf_dynarr_push(n->meshes, &m))) {
 		return -1;
 	}
 	n->meshes = tmp;
-	n->num_meshes = mf_dynarr_size(n->meshes);
-
-	if(m->node) {
-		mf_node_remove_mesh(m->node, m);
-	}
-	m->node = n;
+	n->num_meshes++;
 	return 0;
 }
 
@@ -854,10 +857,6 @@ int mf_node_remove_mesh(struct mf_node *n, struct mf_mesh *m)
 			n->meshes = mf_dynarr_pop(n->meshes);
 			break;
 		}
-	}
-
-	if(m->node == n) {
-		m->node = 0;
 	}
 	return 0;
 }
@@ -966,19 +965,22 @@ static void init_aabox(mf_aabox *box)
 
 static void calc_aabox(struct mf_meshfile *mf)
 {
-	long j;
-	int i, nmeshes = mf_num_meshes(mf);
+	long k;
+	int i, j, nnodes = mf_num_nodes(mf);
+	struct mf_node *n;
 	struct mf_mesh *m;
 	mf_vec3 v;
 
 	init_aabox(&mf->aabox);
 
-	for(i=0; i<nmeshes; i++) {
-		m = mf_get_mesh(mf, i);
-		for(j=0; j<m->num_verts; j++) {
-			mf_transform(&v, m->vertex + j, m->node->global_matrix);
-
-			expand_aabox(&mf->aabox, v);
+	for(i=0; i<nnodes; i++) {
+		n = mf_get_node(mf, i);
+		for(j=0; j<n->num_meshes; j++) {
+			m = n->meshes[j];
+			for(k=0; k<m->num_verts; k++) {
+				mf_transform(&v, m->vertex + k, n->global_matrix);
+				expand_aabox(&mf->aabox, v);
+			}
 		}
 	}
 }

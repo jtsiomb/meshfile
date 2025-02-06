@@ -108,8 +108,6 @@ struct mf_mesh {
 	struct mf_material *mtl;
 
 	void *udata;
-
-	struct mf_node *node;	/* transformation node for this mesh */
 };
 
 enum { MF_SEEK_SET, MF_SEEK_CUR, MF_SEEK_END };

@@ -20,14 +20,6 @@ CFLAGS = -pedantic -Wall -g -fPIC -Iinclude -MMD
 
 .PHONY: all
 all: $(libso) $(liba)
-	@echo
-	@echo 'meshfile library compiled successfully. Running make install now, will install'
-	@echo "it under the $(PREFIX) prefix. You can change the prefix by modifying the first"
-	@echo 'line of the Makefile.'
-	@echo
-	@echo 'To build the meshview example, change into the meshview directory and run make.'
-	@echo 'For a list of meshview dependencies see the meshview/README.md file.'
-	@echo
 
 $(libso): $(obj)
 	$(CC) -o $@ $(shared) $(obj) $(LDFLAGS)
@@ -70,6 +62,10 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(libso)
 	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(soname)
 	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname)
+
+
+.PHONY: tools
+tools: $(libso) $(liba) meshview meshconv
 
 .PHONY: clean-all
 clean-all: clean clean-meshview clean-meshconv

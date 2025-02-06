@@ -184,11 +184,7 @@ static void display(void)
 		for(i=0; i<mf_num_meshes(mf); i++) {
 			mesh = mf_get_mesh(mf, i);
 			setup_material(mesh->mtl);
-
-			glPushMatrix();
-			glMultMatrixf(mesh->node->global_matrix);
 			draw_mesh(mesh);
-			glPopMatrix();
 		}
 	}
 
@@ -301,7 +297,6 @@ static void reset_view(void)
 	cam_dist = sqrt(dx * dx + dy * dy + dz * dz) * 0.75f;
 	zfar = cam_dist * 50.0f;
 	znear = zfar * 0.001;
-	if(znear < 0.1) znear = 0.1;
 	/* force recalc projection */
 	if(win_width > 0) reshape(win_width, win_height);
 }
