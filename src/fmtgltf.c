@@ -95,6 +95,11 @@ struct node {
 	struct mf_node *mfnode;
 };
 
+struct chunkhdr {
+	uint32_t len;
+	uint32_t type;
+};
+
 struct gltf_file {
 	int meshcount;
 
@@ -105,6 +110,8 @@ struct gltf_file {
 	struct sampler *samplers;
 	struct texture *textures;
 	struct node *nodes;
+
+	unsigned char *glbdata;
 };
 
 
@@ -154,55 +161,106 @@ static struct {
 
 int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 {
-	int res = -1;
+	int res = -1, bin = 0;
 	long i, j, filesz;
 	int num_nodes, num_meshes;
-	char *filebuf;
+	char *filebuf = 0;
 	struct json_obj root;
 	struct json_value *jval;
 	struct json_item *jitem;
-	struct gltf_file gltf = {0};
+	struct gltf_file gltf_file = {0};
+	struct gltf_file *gltf = &gltf_file;
+	struct chunkhdr chunk;
 
-	if(!(filebuf = malloc(4096))) {
+	if(!(filebuf = malloc(256))) {
 		fprintf(stderr, "mf_load: failed to allocate file buffer\n");
 		return -1;
 	}
-	filesz = io->read(io->file, filebuf, 4096);
-	if(filesz < 2) {
+	filesz = io->read(io->file, filebuf, 256);
+	if(filesz < 4) {
 		free(filebuf);
 		return -1;
 	}
-	for(i=0; i<filesz; i++) {
-		if(!isspace(filebuf[i])) {
-			if(filebuf[i] != '{') {
-				free(filebuf);
-				return -1;		/* not json */
-			}
-			break;
-		}
-	}
-	free(filebuf);
 
-	/* alright, it looks like json, load into memory and parse it to continue */
-	filesz = io->seek(io->file, 0, MF_SEEK_END);
-	io->seek(io->file, 0, MF_SEEK_SET);
-	if(!(filebuf = malloc(filesz + 1))) {
-		fprintf(stderr, "mf_load: failed to load file into memory\n");
-		return -1;
-	}
-	if(io->read(io->file, filebuf, filesz) != filesz) {
-		fprintf(stderr, "mf_load: EOF while reading file\n");
+	if(memcmp(filebuf, "glTF", 4) == 0) {
+		/* gltf binary */
+		bin = 1;
+		filesz = *(uint32_t*)(filebuf + 8);
+		/* TODO handle big endian */
+
+		/* the first chunk should be JSON */
+		if(memcmp(filebuf + 16, "JSON", 4) != 0) {
+			fprintf(stderr, "gltf_load: first chunk type not JSON\n");
+			goto end;
+		}
+		chunk.len = *(uint32_t*)(filebuf + 12);	/* TODO big endian */
+
 		free(filebuf);
-		return -1;
+		if(!(filebuf = malloc(chunk.len + 1))) {
+			fprintf(stderr, "gltf_load: failed to allocate JSON buffer\n");
+			goto end;
+		}
+		io->seek(io->file, 20, MF_SEEK_SET);
+		if(io->read(io->file, filebuf, chunk.len) != chunk.len) {
+			fprintf(stderr, "mf_load: EOF while reading file\n");
+			free(filebuf);
+			return -1;
+		}
+		filebuf[chunk.len] = 0;
+
+	} else {
+		/* does it look like json ? */
+		for(i=0; i<filesz; i++) {
+			if(!isspace(filebuf[i])) {
+				if(filebuf[i] != '{') {
+					free(filebuf);
+					return -1;		/* not json */
+				}
+				break;
+			}
+		}
+		filesz = io->seek(io->file, 0, MF_SEEK_END);
+
+		/* read the whole file into memory */
+		free(filebuf);
+		io->seek(io->file, 0, MF_SEEK_SET);
+		if(!(filebuf = malloc(filesz + 1))) {
+			fprintf(stderr, "mf_load: failed to load file into memory\n");
+			return -1;
+		}
+		if(io->read(io->file, filebuf, filesz) != filesz) {
+			fprintf(stderr, "mf_load: EOF while reading file\n");
+			free(filebuf);
+			return -1;
+		}
+		filebuf[filesz] = 0;
 	}
-	filebuf[filesz] = 0;
 
 	json_init_obj(&root);
 	if(json_parse(&root, filebuf) == -1) {
-		free(filebuf);
-		return -1;
+		goto end;
 	}
 	free(filebuf);
+	filebuf = 0;
+
+	if(bin) {
+		/* if it's a binary file, also find and load the binary buffer chunk */
+		while(io->read(io->file, &chunk, 8) == 8) {
+			if(memcmp(&chunk.type, "BIN", 4) == 0) {
+				/* TODO big endian */
+				if(!(gltf->glbdata = malloc(chunk.len))) {
+					fprintf(stderr, "gltf_load: failed to allocate binary chunk data buffer\n");
+					goto end;
+				}
+				if(io->read(io->file, gltf->glbdata, chunk.len) < chunk.len) {
+					fprintf(stderr, "gltf_load: unexpected EOF while reading binary chunk data\n");
+					goto end;
+				}
+				break;
+			}
+			io->seek(io->file, chunk.len, MF_SEEK_CUR);	/* skip chunk */
+		}
+	}
 
 	/* a valid gltf file needs to have an "asset" node with a version number */
 	if(!(jval = json_lookup(&root, "asset.version"))) {
@@ -211,15 +269,15 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 	}
 
 	/* initialize the dynamic arrays in the gltf structure */
-	gltf.images = mf_dynarr_alloc(0, sizeof *gltf.images);
-	gltf.samplers = mf_dynarr_alloc(0, sizeof *gltf.samplers);
-	gltf.textures = mf_dynarr_alloc(0, sizeof *gltf.textures);
-	gltf.buffers = mf_dynarr_alloc(0, sizeof *gltf.buffers);
-	gltf.bufviews = mf_dynarr_alloc(0, sizeof *gltf.bufviews);
-	gltf.accessors = mf_dynarr_alloc(0, sizeof *gltf.accessors);
-	gltf.nodes = mf_dynarr_alloc(0, sizeof *gltf.nodes);
-	if(!gltf.images || !gltf.buffers || !gltf.bufviews || !gltf.accessors ||
-			!gltf.samplers || !gltf.textures || !gltf.nodes) {
+	gltf->images = mf_dynarr_alloc(0, sizeof *gltf->images);
+	gltf->samplers = mf_dynarr_alloc(0, sizeof *gltf->samplers);
+	gltf->textures = mf_dynarr_alloc(0, sizeof *gltf->textures);
+	gltf->buffers = mf_dynarr_alloc(0, sizeof *gltf->buffers);
+	gltf->bufviews = mf_dynarr_alloc(0, sizeof *gltf->bufviews);
+	gltf->accessors = mf_dynarr_alloc(0, sizeof *gltf->accessors);
+	gltf->nodes = mf_dynarr_alloc(0, sizeof *gltf->nodes);
+	if(!gltf->images || !gltf->buffers || !gltf->bufviews || !gltf->accessors ||
+			!gltf->samplers || !gltf->textures || !gltf->nodes) {
 		fprintf(stderr, "mf_load: failed to allocate dynamic array\n");
 		goto end;
 	}
@@ -240,7 +298,7 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 							gltf_thing[i].arrname, j);
 					continue;
 				}
-				gltf_thing[i].read_thing(mf, &gltf, &jval->obj, io);
+				gltf_thing[i].read_thing(mf, gltf, &jval->obj, io);
 			}
 		}
 	}
@@ -252,31 +310,33 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 	}
 
 	/* process nodes and construct hierarchy */
-	num_nodes = mf_dynarr_size(gltf.nodes);
+	num_nodes = mf_dynarr_size(gltf->nodes);
 	for(i=0; i<num_nodes; i++) {
-		proc_node(gltf.nodes, i);
+		proc_node(gltf->nodes, i);
 	}
 	for(i=0; i<num_nodes; i++) {
-		mf_add_node(mf, gltf.nodes[i].mfnode);
-		gltf.nodes[i].mfnode = 0;
+		mf_add_node(mf, gltf->nodes[i].mfnode);
+		gltf->nodes[i].mfnode = 0;
 	}
 
 	res = 0;
 end:
-	mf_dynarr_free(gltf.images);
-	mf_dynarr_free(gltf.samplers);
-	mf_dynarr_free(gltf.textures);
-	for(i=0; i<mf_dynarr_size(gltf.buffers); i++) {
-		free(gltf.buffers[i].data);
+	free(filebuf);
+	mf_dynarr_free(gltf->images);
+	mf_dynarr_free(gltf->samplers);
+	mf_dynarr_free(gltf->textures);
+	for(i=0; i<mf_dynarr_size(gltf->buffers); i++) {
+		free(gltf->buffers[i].data);
 	}
-	mf_dynarr_free(gltf.buffers);
-	mf_dynarr_free(gltf.bufviews);
-	mf_dynarr_free(gltf.accessors);
-	for(i=0; i<mf_dynarr_size(gltf.nodes); i++) {
-		free(gltf.nodes[i].cidx);
-		mf_free_node(gltf.nodes[i].mfnode);
+	mf_dynarr_free(gltf->buffers);
+	mf_dynarr_free(gltf->bufviews);
+	mf_dynarr_free(gltf->accessors);
+	for(i=0; i<mf_dynarr_size(gltf->nodes); i++) {
+		free(gltf->nodes[i].cidx);
+		mf_free_node(gltf->nodes[i].mfnode);
 	}
-	mf_dynarr_free(gltf.nodes);
+	mf_dynarr_free(gltf->nodes);
+	free(gltf->glbdata);
 	json_destroy_obj(&root);
 	return res;
 }
@@ -534,7 +594,7 @@ static int read_material(struct mf_meshfile *mf, struct gltf_file *gltf, struct 
 static int read_buffer(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jbuf,
 		const struct mf_userio *io)
 {
-	struct buffer buf;
+	struct buffer buf = {0};
 	struct json_value *jval;
 	void *ptr;
 
@@ -543,19 +603,21 @@ static int read_buffer(struct mf_meshfile *mf, struct gltf_file *gltf, struct js
 		return -1;
 	}
 
-	if(!(jval = json_lookup(jbuf, "uri"))) {
-		fprintf(stderr, "load_gltf: buffer missing or invalid uri\n");
+	if((jval = json_lookup(jbuf, "uri"))) {
+		if(!(buf.data = malloc(buf.size))) {
+			fprintf(stderr, "load_gltf: failed to allocate %ld byte buffer\n", buf.size);
+			return -1;
+		}
+		if(read_data(mf, buf.data, buf.size, jval->str, io) == -1) {
+			free(buf.data);
+			return -1;
+		}
+
+	} else if(!gltf->glbdata) {
+		fprintf(stderr, "load_gltf: missing or invalid uri in buffer\n");
 		return -1;
 	}
 
-	if(!(buf.data = malloc(buf.size))) {
-		fprintf(stderr, "load_gltf: failed to allocate %ld byte buffer\n", buf.size);
-		return -1;
-	}
-	if(read_data(mf, buf.data, buf.size, jval->str, io) == -1) {
-		free(buf.data);
-		return -1;
-	}
 	if(!(ptr = mf_dynarr_push(gltf->buffers, &buf))) {
 		fprintf(stderr, "load_gltf: failed to add buffer\n");
 		free(buf.data);
@@ -775,7 +837,11 @@ static int read_mesh_attr(struct mf_mesh *mesh, struct gltf_file *gltf, struct a
 	bview = gltf->bufviews + acc->bvidx;
 	buf = gltf->buffers + bview->bufidx;
 
-	src = buf->data + bview->offs + acc->offs;
+	if(buf->data) {
+		src = buf->data + bview->offs + acc->offs;
+	} else {
+		src = gltf->glbdata + bview->offs + acc->offs;
+	}
 
 	for(i=0; i<acc->count; i++) {
 		switch(acc->type) {
