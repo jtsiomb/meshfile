@@ -1,11 +1,11 @@
-PREFIX = /usr/local
+include ../config.mk
 
 obj = meshview.o
 
 bin = meshview
 
-CFLAGS = -g -I../include -I/usr/local/include
-LDFLAGS = -L.. -L/usr/local/lib -lmeshfile -lglut -lX11 -lXmu -lGL -lGLU -limago -lm
+CFLAGS = $(warn) $(opt) $(dbg) -I../include -I$(PREFIX)/include $(sysincdirs)
+LDFLAGS = -L.. -L$(PREFIX)/$(libdir) -lmeshfile -lglut -lX11 -lXmu -lGL -lGLU -limago -lm
 
 $(bin): $(obj) ../libmeshfile.a
 	$(CC) -o $(bin) $(obj) $(LDFLAGS)

@@ -8,8 +8,10 @@ core
 *.obj
 *.mtl
 *.a
-*.so.*
+*.so*
 *.lib
 *.dll
+*.dylib
+config.mk
 meshview/meshview
 meshconv/meshconv

@@ -33,7 +33,6 @@ static void keypress(unsigned char key, int x, int y);
 static void skeypress(int key, int x, int y);
 static void mouse(int bn, int st, int x, int y);
 static void motion(int x, int y);
-static void menuact(int id);
 static void glprintf(int x, int y, const char *fmt, ...);
 static int parse_args(int argc, char **argv);
 
@@ -358,7 +357,7 @@ static void keypress(unsigned char key, int x, int y)
 		if(glutGetModifiers() & GLUT_ACTIVE_ALT) {
 			if(saved_win_xsz) {
 				glutReshapeWindow(saved_win_xsz, saved_win_ysz);
-				saved_win_ysz = saved_win_ysz = 0;
+				saved_win_xsz = saved_win_ysz = 0;
 			} else {
 				saved_win_xsz = win_width;
 				saved_win_ysz = win_height;

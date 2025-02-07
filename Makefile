@@ -1,6 +1,6 @@
-PREFIX = /usr/local
-
 src = $(wildcard src/*.c)
+src = src/meshfile.c src/fmtobj.c src/fmtgltf.c src/fmtjtf.c src/util.c \
+	  src/dynarr.c src/rbtree.c src/json.c
 obj = $(src:.c=.o)
 dep = $(src:.c=.d)
 
@@ -8,15 +8,15 @@ somajor = 0
 sominor = 1
 
 liba = libmeshfile.a
-ldname = libmeshfile.so
+#ldname = libmeshfile.so
 soname = $(ldname).$(somajor)
 libso = $(ldname).$(somajor).$(sominor)
-shared = -shared -Wl,-soname,$(soname)
+#shared = -shared -Wl,-soname,$(soname)
 
-libdir = lib
+CFLAGS = $(warn) $(opt) $(dbg) $(pic) -Iinclude $(dep) $(CFLAGS_cfg)
+LDFLAGS = $(LDFLAGS_cfg)
 
-CFLAGS = -pedantic -Wall -g -fPIC -Iinclude -MMD
-
+include config.mk
 
 .PHONY: all
 all: $(libso) $(liba)
@@ -32,6 +32,12 @@ meshview/meshview: meshview/meshview.c $(libso)
 
 meshconv/meshconv: meshconv/meshconv.c $(libso)
 	$(MAKE) -C meshconv
+
+config.mk: configure
+	./configure
+
+.PHONY: config
+config: config.mk
 
 -include $(dep)
 
