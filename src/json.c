@@ -503,7 +503,7 @@ static int array(struct parser *p, struct json_arr *arr)
 
 	json_init_arr(arr);
 
-	while(p->nextc != -1 && p->nextc != ']') {
+	while(p->nextc > 0 && p->nextc != ']') {
 		if(value(p, &val) == -1) {
 			fprintf(stderr, "json_parse: expected value in array\n");
 			json_destroy_arr(arr);

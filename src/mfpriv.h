@@ -18,13 +18,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #ifndef MFPRIV_H_
 #define MFPRIV_H_
 
-#include <stdint.h>
-
 #include "meshfile.h"
 #include "rbtree.h"
+#include "util.h"
 
 #ifdef __GNUC__
 #define PACKED	__attribute__((packed))
+#else
+#define PACKED
 #endif
 
 int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io);

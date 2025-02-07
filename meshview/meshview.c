@@ -124,7 +124,7 @@ static int init(void)
 			gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 
 			img_free_pixels(pixels);
-			mtl->attr[MF_COLOR].udata = (void*)(uintptr_t)tex;
+			mtl->attr[MF_COLOR].udata = (void*)tex;
 		}
 	}
 
@@ -214,7 +214,7 @@ static void display(void)
 
 static void draw_mesh(struct mf_mesh *m)
 {
-	int i, j, vidx, dlist = (intptr_t)m->udata;
+	int i, j, vidx, dlist = (int)m->udata;
 	mf_face *f;
 
 	if(!dlist) {
@@ -255,7 +255,7 @@ static void draw_mesh(struct mf_mesh *m)
 		}
 		glEnd();
 		glEndList();
-		m->udata = (void*)(intptr_t)dlist;
+		m->udata = (void*)dlist;
 	}
 
 	glCallList(dlist);
@@ -270,7 +270,7 @@ static void setup_material(struct mf_material *mtl)
 	glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, mtl->attr[MF_SHININESS].val.x);
 
 	if(mtl->attr[MF_COLOR].udata && use_tex) {
-		tex = (uintptr_t)mtl->attr[MF_COLOR].udata;
+		tex = (unsigned int)mtl->attr[MF_COLOR].udata;
 		glEnable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, tex);
 	} else {

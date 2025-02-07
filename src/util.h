@@ -20,6 +20,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "meshfile.h"
 
+#if __STDC_VERSION__ >= 199901L
+#include <stdint.h>
+#else
+#include <inttypes.h>
+#endif
+
 long mf_calc_b64_size(const char *s);
 void *mf_b64decode(const char *str, void *buf, long *bufsz);
 

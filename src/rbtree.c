@@ -7,12 +7,11 @@ the terms of the 3-clause BSD license. See COPYING for details.
 */
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 #include "rbtree.h"
 
-#define INT2PTR(x)	((void*)(intptr_t)(x))
-#define PTR2INT(x)	((int)(intptr_t)(x))
+#define INT2PTR(x)	((void*)(x))
+#define PTR2INT(x)	((int)(x))
 
 struct rbtree {
 	struct rbnode *root;

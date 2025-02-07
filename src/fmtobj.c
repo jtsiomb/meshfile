@@ -17,11 +17,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
 #include <ctype.h>
 #include "mfpriv.h"
 #include "rbtree.h"
 #include "dynarr.h"
+#include "util.h"
 
 
 struct facevertex {
@@ -354,7 +354,6 @@ static int parse_map(struct mf_mtlattr *attr, char *args)
 {
 	int i, cubeface = -1;
 	char *arg, *val, *prev;
-	char *file = 0;
 	int bval;
 	float fval;
 	mf_vec3 pos = {0, 0, 0}, scale = {1, 1, 1};
@@ -429,7 +428,7 @@ invalopt:		fprintf(stderr, "ignoring invalid %s option in map: %s\n", arg, val);
 				}
 			} else {
 				free(map->cube[cubeface]);
-				if(!(map->cube[cubeface] = file = strdup(arg))) {
+				if(!(map->cube[cubeface] = strdup(arg))) {
 					fprintf(stderr, "failed to allocate cubemap name: %s\n", arg);
 					continue;
 				}

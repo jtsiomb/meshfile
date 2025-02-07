@@ -64,6 +64,7 @@ int mf_load_jtf(struct mf_meshfile *mf, const struct mf_userio *io)
 	if(memcmp(hdr.magic, "JTF!", 4) != 0) {
 		return -1;
 	}
+	CONV_LE32(hdr.nfaces);
 
 	if(!(mesh = mf_alloc_mesh())) {
 		fprintf(stderr, "jtf: failed to allocate mesh\n");
