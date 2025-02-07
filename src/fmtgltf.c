@@ -186,14 +186,15 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 		/* gltf binary */
 		bin = 1;
 		filesz = *(uint32_t*)(filebuf + 8);
-		/* TODO handle big endian */
+		CONV_LE32(filesz);
 
 		/* the first chunk should be JSON */
 		if(memcmp(filebuf + 16, "JSON", 4) != 0) {
 			fprintf(stderr, "gltf_load: first chunk type not JSON\n");
 			goto end;
 		}
-		chunk.len = *(uint32_t*)(filebuf + 12);	/* TODO big endian */
+		chunk.len = *(uint32_t*)(filebuf + 12);
+		CONV_LE32(chunk.len);
 
 		free(filebuf);
 		if(!(filebuf = malloc(chunk.len + 1))) {
@@ -247,7 +248,7 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 		/* if it's a binary file, also find and load the binary buffer chunk */
 		while(io->read(io->file, &chunk, 8) == 8) {
 			if(memcmp(&chunk.type, "BIN", 4) == 0) {
-				/* TODO big endian */
+				CONV_LE32(chunk.len);
 				if(!(gltf->glbdata = malloc(chunk.len))) {
 					fprintf(stderr, "gltf_load: failed to allocate binary chunk data buffer\n");
 					goto end;
@@ -833,6 +834,7 @@ static int read_mesh_attr(struct mf_mesh *mesh, struct gltf_file *gltf, struct a
 	struct buffer *buf;
 	float vec[4] = {0, 0, 0, 1};
 	unsigned int vidx[3];
+	unsigned short sval;
 
 	bview = gltf->bufviews + acc->bvidx;
 	buf = gltf->buffers + bview->bufidx;
@@ -848,6 +850,11 @@ static int read_mesh_attr(struct mf_mesh *mesh, struct gltf_file *gltf, struct a
 		case GLTF_FLOAT:
 			memcpy(vec, src, acc->nelem * sizeof(float));
 			src += acc->nelem * sizeof(float);
+			if(TARGET_BIGEND) {
+				for(j=0; j<acc->nelem; j++) {
+					BSWAPFLT(vec[j]);
+				}
+			}
 			break;
 
 		case GLTF_UBYTE:
@@ -858,11 +865,15 @@ static int read_mesh_attr(struct mf_mesh *mesh, struct gltf_file *gltf, struct a
 
 		case GLTF_USHORT:
 			if(attrid == FACEIDX) {
-				vidx[curidx++] = *(unsigned short*)src;
+				sval = *(unsigned short*)src;
+				CONV_LE16(sval);
+				vidx[curidx++] = sval;
 				src += sizeof(unsigned short);
 			} else {
 				for(j=0; j<acc->nelem; j++) {
-					vec[j] = *(unsigned short*)src / 65535.0f;
+					sval = *(unsigned short*)src;
+					CONV_LE16(sval);
+					vec[j] = (float)sval / 65535.0f;
 					src += sizeof(unsigned short);
 				}
 			}
@@ -870,7 +881,9 @@ static int read_mesh_attr(struct mf_mesh *mesh, struct gltf_file *gltf, struct a
 
 		case GLTF_UINT:
 			if(attrid == FACEIDX) {
-				vidx[curidx++] = *(unsigned int*)src;
+				vidx[curidx] = *(unsigned int*)src;
+				CONV_LE32(vidx[curidx]);
+				curidx++;
 				src += sizeof(unsigned int);
 				break;
 			}

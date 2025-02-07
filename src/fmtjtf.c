@@ -82,6 +82,16 @@ int mf_load_jtf(struct mf_meshfile *mf, const struct mf_userio *io)
 		}
 
 		for(j=0; j<3; j++) {
+			if(TARGET_BIGEND) {
+				BSWAPFLT(face.v[j].pos.x);
+				BSWAPFLT(face.v[j].pos.y);
+				BSWAPFLT(face.v[j].pos.z);
+				BSWAPFLT(face.v[j].norm.x);
+				BSWAPFLT(face.v[j].norm.y);
+				BSWAPFLT(face.v[j].norm.z);
+				BSWAPFLT(face.v[j].uv.x);
+				BSWAPFLT(face.v[j].uv.y);
+			}
 			if(mf_add_vertex(mesh, face.v[j].pos.x, face.v[j].pos.y, face.v[j].pos.z) == -1) {
 				goto err;
 			}
@@ -147,6 +157,17 @@ int mf_save_jtf(const struct mf_meshfile *mf, const struct mf_userio *io)
 				face.v[k].pos = mesh->vertex[vidx];
 				face.v[k].norm = mesh->normal ? mesh->normal[vidx] : defnorm;
 				face.v[k].uv = mesh->texcoord ? mesh->texcoord[vidx] : defuv;
+
+				if(TARGET_BIGEND) {
+					BSWAPFLT(face.v[k].pos.x);
+					BSWAPFLT(face.v[k].pos.y);
+					BSWAPFLT(face.v[k].pos.z);
+					BSWAPFLT(face.v[k].norm.x);
+					BSWAPFLT(face.v[k].norm.y);
+					BSWAPFLT(face.v[k].norm.z);
+					BSWAPFLT(face.v[k].uv.x);
+					BSWAPFLT(face.v[k].uv.y);
+				}
 			}
 			if(io->write(io->file, &face, sizeof face) < sizeof face) {
 				fprintf(stderr, "jtf: failed to write faces\n");

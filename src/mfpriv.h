@@ -71,8 +71,12 @@ int mf_strcasecmp(const char *a, const char *b);
 #define TARGET_BIGEND		(*(uint16_t*)"ab" == 0x6162)
 #define TARGET_LITEND		(*(uint16_t*)"ab" == 0x6261)
 
-#define BSWAP16(x)		((x) = ((uint16_t)(x) >> 8 | (uint16_t)(x) << 8))
+#define BSWAP16(x)		((x) = (((uint16_t)(x) >> 8) | ((uint16_t)(x) << 8)))
+#define BSWAP32(x)		((x) = ((uint32_t)(x) >> 24) | ((uint32_t)(x) << 24) | \
+			(((uint32_t)(x) >> 8) & 0xff00) | (((uint32_t)(x) << 8) & 0xff0000))
+#define BSWAPFLT(x)		BSWAP32(*(uint32_t*)&(x))
 
 #define CONV_LE16(x)	do if(TARGET_BIGEND) BSWAP16(x); while(0)
+#define CONV_LE32(x)	do if(TARGET_BIGEND) BSWAP32(x); while(0)
 
 #endif	/* MFPRIV_H_ */
