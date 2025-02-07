@@ -10,7 +10,7 @@ reads/writes:
    pre-defined vertex attributes. No quads, n-gons, strips, or fans.
  - Materials with a number of common pre-defined material attributes, each
    optionally combined with a texture map (filename/path).
- - Optional transformation node hierarchy (TODO).
+ - Optional transformation node hierarchy.
 
 Animations are explicitly outside of the scope of this library.
 
