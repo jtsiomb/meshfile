@@ -92,7 +92,9 @@ elif [ "$sys" = Darwin ]; then
 
 else
 	# other UNIX
-	echo 'libso = libmeshfile.so' >>$cfgmk
+	echo 'ldname = libmeshfile.so' >>$cfgmk
+	echo 'soname = $(ldname).$(somajor)' >>$cfgmk
+	echo 'libso = $(ldname).$(somajor).$(sominor)' >>$cfgmk
 	echo 'shared = -shared -Wl,-soname,$(soname)' >>$cfgmk
 	echo 'pic = -fPIC' >>$cfgmk
 fi

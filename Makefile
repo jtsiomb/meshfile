@@ -9,8 +9,8 @@ sominor = 1
 
 liba = libmeshfile.a
 #ldname = libmeshfile.so
-soname = $(ldname).$(somajor)
-libso = $(ldname).$(somajor).$(sominor)
+#soname = $(ldname).$(somajor)
+#libso = $(ldname).$(somajor).$(sominor)
 #shared = -shared -Wl,-soname,$(soname)
 
 CFLAGS = $(warn) $(opt) $(dbg) $(pic) -Iinclude $(dep) $(CFLAGS_cfg)
