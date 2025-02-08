@@ -13,8 +13,10 @@
 int main(int argc, char **argv)
 {
 	int i, j, fmt = -1;
-	const char *typestr[] = {"obj", "jtf"};
-	const char *typedesc[] = {"Wavefront OBJ", "Just Triangle Faces"};
+	const char *typestr[] = {"obj", "jtf", "gltf"};
+	const char *typedesc[] = {
+		"Wavefront OBJ", "Just Triangle Faces", "GL Transmission Format"
+	};
 	const char *srcfile = 0;
 	const char *destfile = 0;
 	struct mf_meshfile *mf;

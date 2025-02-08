@@ -114,6 +114,8 @@ struct gltf_file {
 	unsigned char *glbdata;
 };
 
+static int init_gltf(struct gltf_file *gltf);
+static void destroy_gltf(struct gltf_file *gltf);
 
 static int read_data(struct mf_meshfile *mf, void *buf, unsigned long sz, const char *str,
 		const struct mf_userio *io);
@@ -158,6 +160,43 @@ static struct {
 	{0, 0}
 };
 
+static int init_gltf(struct gltf_file *gltf)
+{
+	memset(gltf, 0, sizeof *gltf);
+	gltf->images = mf_dynarr_alloc(0, sizeof *gltf->images);
+	gltf->samplers = mf_dynarr_alloc(0, sizeof *gltf->samplers);
+	gltf->textures = mf_dynarr_alloc(0, sizeof *gltf->textures);
+	gltf->buffers = mf_dynarr_alloc(0, sizeof *gltf->buffers);
+	gltf->bufviews = mf_dynarr_alloc(0, sizeof *gltf->bufviews);
+	gltf->accessors = mf_dynarr_alloc(0, sizeof *gltf->accessors);
+	gltf->nodes = mf_dynarr_alloc(0, sizeof *gltf->nodes);
+	if(!gltf->images || !gltf->buffers || !gltf->bufviews || !gltf->accessors ||
+			!gltf->samplers || !gltf->textures || !gltf->nodes) {
+		fprintf(stderr, "mf_load: failed to allocate dynamic array\n");
+		return -1;
+	}
+	return 0;
+}
+
+static void destroy_gltf(struct gltf_file *gltf)
+{
+	int i;
+	mf_dynarr_free(gltf->images);
+	mf_dynarr_free(gltf->samplers);
+	mf_dynarr_free(gltf->textures);
+	for(i=0; i<mf_dynarr_size(gltf->buffers); i++) {
+		free(gltf->buffers[i].data);
+	}
+	mf_dynarr_free(gltf->buffers);
+	mf_dynarr_free(gltf->bufviews);
+	mf_dynarr_free(gltf->accessors);
+	for(i=0; i<mf_dynarr_size(gltf->nodes); i++) {
+		free(gltf->nodes[i].cidx);
+		mf_free_node(gltf->nodes[i].mfnode);
+	}
+	mf_dynarr_free(gltf->nodes);
+	free(gltf->glbdata);
+}
 
 int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 {
@@ -270,16 +309,7 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 	}
 
 	/* initialize the dynamic arrays in the gltf structure */
-	gltf->images = mf_dynarr_alloc(0, sizeof *gltf->images);
-	gltf->samplers = mf_dynarr_alloc(0, sizeof *gltf->samplers);
-	gltf->textures = mf_dynarr_alloc(0, sizeof *gltf->textures);
-	gltf->buffers = mf_dynarr_alloc(0, sizeof *gltf->buffers);
-	gltf->bufviews = mf_dynarr_alloc(0, sizeof *gltf->bufviews);
-	gltf->accessors = mf_dynarr_alloc(0, sizeof *gltf->accessors);
-	gltf->nodes = mf_dynarr_alloc(0, sizeof *gltf->nodes);
-	if(!gltf->images || !gltf->buffers || !gltf->bufviews || !gltf->accessors ||
-			!gltf->samplers || !gltf->textures || !gltf->nodes) {
-		fprintf(stderr, "mf_load: failed to allocate dynamic array\n");
+	if(init_gltf(gltf) == -1) {
 		goto end;
 	}
 
@@ -323,21 +353,7 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 	res = 0;
 end:
 	free(filebuf);
-	mf_dynarr_free(gltf->images);
-	mf_dynarr_free(gltf->samplers);
-	mf_dynarr_free(gltf->textures);
-	for(i=0; i<mf_dynarr_size(gltf->buffers); i++) {
-		free(gltf->buffers[i].data);
-	}
-	mf_dynarr_free(gltf->buffers);
-	mf_dynarr_free(gltf->bufviews);
-	mf_dynarr_free(gltf->accessors);
-	for(i=0; i<mf_dynarr_size(gltf->nodes); i++) {
-		free(gltf->nodes[i].cidx);
-		mf_free_node(gltf->nodes[i].mfnode);
-	}
-	mf_dynarr_free(gltf->nodes);
-	free(gltf->glbdata);
+	destroy_gltf(gltf);
 	json_destroy_obj(&root);
 	return res;
 }
@@ -1028,11 +1044,181 @@ static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 	return 0;
 }
 
+static const char *indent(int lvl);
+static void write_node(const struct mf_meshfile *mf, struct gltf_file *gltf,
+		const struct mf_node *node, const struct mf_userio *io);
+static void write_mtl(const struct mf_meshfile *mf, struct gltf_file *gltf,
+		const struct mf_material *mtl, const struct mf_userio *io);
+static int get_texidx(struct gltf_file *gltf, const char *name);
+
+#define wrind(lvl) mf_fputs(indent(lvl), io)
+
+#define THINGIDX(idx, ptr, arr) \
+	do { \
+		for((idx) = 0; (idx) < mf_dynarr_size(arr); (idx)++) { \
+			if((arr)[idx] == (ptr)) { \
+				break; \
+			} \
+		} \
+	} while(0)
+
+const char *outhdr = "{\n"
+	"    \"asset\": { \"generator\": \"libmeshfile\", \"version\": \"2.0\" },\n"
+	"    \"scene\": 0,\n";
+
 int mf_save_gltf(const struct mf_meshfile *mf, const struct mf_userio *io)
 {
-	/* TODO */
-	return -1;
+	int i, idx, num;
+	struct gltf_file gltf;
+
+	if(init_gltf(&gltf) == -1) {
+		return -1;
+	}
+
+	mf_fputs(outhdr, io);
+	/* root nodes in scene */
+	wrind(1); mf_fputs("\"scenes\": [ {\n", io);
+	wrind(2); mf_fputs("\"nodes\": [\n", io);
+	num = mf_num_topnodes(mf);
+	for(i=0; i<num; i++) {
+		THINGIDX(idx, mf->topnodes[i], mf->nodes);
+		mf_fprintf(io, "%s%d", indent(3), idx);
+		if(i < num - 1) {
+			mf_fputs(",\n", io);
+		}
+	}
+	mf_fputs(" ] } ],\n", io);
+
+	/* all nodes */
+	wrind(1); mf_fputs("\"nodes\": [\n", io);
+	num = mf_num_nodes(mf);
+	for(i=0; i<num; i++) {
+		write_node(mf, &gltf, mf->nodes[i], io);
+	}
+	wrind(1); mf_fputs("]\n", io);
+
+	/* materials */
+	wrind(1); mf_fputs("\"materials\": [\n", io);
+	num = mf_num_materials(mf);
+	for(i=0; i<num; i++) {
+		write_mtl(mf, &gltf, mf->mtl[i], io);
+	}
+	wrind(1); mf_fputs("]\n", io);
+
+	mf_fputs("}\n", io);
+
+	destroy_gltf(&gltf);
+	return 0;
 }
+
+static const char *indent(int lvl)
+{
+	static char buf[128];
+	char *ptr = buf;
+
+	while(lvl-- > 0) {
+		memcpy(ptr, "    ", 4);
+		ptr += 4;
+	}
+	*ptr = 0;
+	return buf;
+}
+
+static void write_node(const struct mf_meshfile *mf, struct gltf_file *gltf,
+		const struct mf_node *node, const struct mf_userio *io)
+{
+	int i, idx;
+	const float *mat = node->matrix;
+
+	wrind(2); mf_fputs("{\n", io);
+	wrind(3); mf_fputs("\"matrix\": [\n", io);
+	for(i=0; i<4; i++) {
+		mf_fprintf(io, "%s%g, %g, %g, %g", indent(4), mat[0], mat[1], mat[2], mat[3]);
+		mat += 4;
+		if(i < 3) {
+			mf_fputs(",\n", io);
+		} else {
+			mf_fputs(" ],\n", io);
+		}
+	}
+
+	if(node->num_child > 0) {
+		wrind(3); mf_fputs("\"children\": [\n", io);
+		for(i=0; i<node->num_child; i++) {
+			THINGIDX(idx, node->child[i], mf->nodes);
+			mf_fprintf(io, "%s%d", indent(4), idx);
+			if(i < node->num_child - 1) {
+				mf_fputs(",\n", io);
+			} else {
+				mf_fputs(" ],\n", io);
+			}
+		}
+	}
+
+	mf_fprintf(io, "%s\"name\": \"%s\"\n", indent(3), node->name);
+	wrind(2); mf_fputs("},\n", io);
+}
+
+static void write_mtl(const struct mf_meshfile *mf, struct gltf_file *gltf,
+		const struct mf_material *mtl, const struct mf_userio *io)
+{
+	int tex;
+	float val;
+	const mf_vec4 *col;
+
+	wrind(2); mf_fputs("{\n", io);
+	wrind(3); mf_fputs("\"pbrMetallicRoughness\": {\n", io);
+	col = &mtl->attr[MF_COLOR].val;
+	wrind(4); mf_fprintf(io, "\"baseColorFactor\": [ %g, %g, %g, %g ],\n",
+			col->x, col->y, col->z, col->w);
+	if((tex = get_texidx(gltf, mtl->attr[MF_COLOR].map.name)) != -1) {
+		wrind(4); mf_fprintf(io, "\"baseColorTexture\": { \"index\": %d }\n", tex);
+	}
+	if((val = mtl->attr[MF_ROUGHNESS].val.x) < 1.0f) {
+		wrind(4); mf_fprintf(io, "\"roughnessFactor\": %g\n", val);
+	}
+	if((tex = get_texidx(gltf, mtl->attr[MF_ROUGHNESS].map.name)) != -1) {
+		wrind(4); mf_fprintf(io, "\"metallicRoughnessTexture\": { \"index\": %d }\n", tex);
+	}
+	if((val = mtl->attr[MF_METALLIC].val.x) < 1.0f) {
+		wrind(4); mf_fprintf(io, "\"metallicFactor\": %g\n", val);
+	}
+	wrind(3); mf_fputs("},\n", io);
+	col = &mtl->attr[MF_EMISSIVE].val;
+	if(col->x > 0.0f || col->y > 0.0f || col->z > 0.0f) {
+		wrind(3);
+		mf_fprintf(io, "\"emissiveFactor\": [ %g, %g, %g ],\n", col->x, col->y, col->z);
+	}
+	if((tex = get_texidx(gltf, mtl->attr[MF_COLOR].map.name)) != -1) {
+		wrind(3); mf_fprintf(io, "\"emissiveTexture\": { \"index\": %d }\n", tex);
+	}
+
+	wrind(3); mf_fputs("\"extensions\": {\n", io);
+	if((val = mtl->attr[MF_IOR].val.x) != 1.5f) {
+		wrind(4); mf_fprintf(io, "\"KHR_materials_ior\": { \"ior\": %g },\n", val);
+	}
+	if((val = mtl->attr[MF_TRANSMIT].val.x) > 0.0f || mtl->attr[MF_TRANSMIT].map.name) {
+		wrind(4); mf_fputs("\"KHR_materials_transmission\": {\n", io);
+		wrind(5); mf_fprintf(io, "\"transmissionFactor\": %g,\n", val);
+		if((tex = get_texidx(gltf, mtl->attr[MF_TRANSMIT].map.name)) != -1) {
+			wrind(5);
+			mf_fprintf(io, "\"transmissionTexture\": { \"index\": %d }\n", tex);
+		}
+	}
+	wrind(3); mf_fputs("},\n", io);
+
+
+	wrind(3); mf_fprintf(io, "\"name\": \"%s\",\n", mtl->name);
+
+	wrind(2);
+	mf_fputs(mtl == mf->mtl[mf_dynarr_size(mf->mtl) - 1] ? "}\n" : "},\n", io);
+}
+
+static int get_texidx(struct gltf_file *gltf, const char *name)
+{
+	return -1;	/* TODO */
+}
+
 
 static int jarr_to_vec(struct json_arr *jarr, mf_vec4 *vec)
 {
