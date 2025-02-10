@@ -37,6 +37,9 @@ int mf_save_jtf(const struct mf_meshfile *mf, const struct mf_userio *io);
 int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io);
 int mf_save_gltf(const struct mf_meshfile *mf, const struct mf_userio *io);
 
+int mf_load_3ds(struct mf_meshfile *mf, const struct mf_userio *io);
+int mf_save_3ds(const struct mf_meshfile *mf, const struct mf_userio *io);
+
 
 struct mf_meshfile {
 	char *name;
@@ -79,5 +82,6 @@ int mf_strcasecmp(const char *a, const char *b);
 
 #define CONV_LE16(x)	do if(TARGET_BIGEND) BSWAP16(x); while(0)
 #define CONV_LE32(x)	do if(TARGET_BIGEND) BSWAP32(x); while(0)
+#define CONV_LEFLT(x)	do if(TARGET_BIGEND) BSWAPFLT(x); while(0)
 
 #endif	/* MFPRIV_H_ */

@@ -31,6 +31,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
  * open a file. wavefront obj must be last, because it can't be identified.
  */
 struct filefmt filefmt[MF_NUM_FMT] = {
+	{MF_FMT_3DS, {"3ds", 0}, mf_load_3ds, mf_save_3ds},
 	{MF_FMT_JTF, {"jtf", 0}, mf_load_jtf, mf_save_jtf},
 	{MF_FMT_GLTF, {"gltf", 0}, mf_load_gltf, mf_save_gltf},
 	{MF_FMT_OBJ, {"obj", 0}, mf_load_obj, mf_save_obj}
