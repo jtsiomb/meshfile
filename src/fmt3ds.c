@@ -99,7 +99,7 @@ int mf_load_3ds(struct mf_meshfile *mf, const struct mf_userio *io)
 		return -1;
 	}
 
-	while(read_chunk(&ck, &root, io) == -1) {
+	while(read_chunk(&ck, &root, io) != -1) {
 		switch(ck.id) {
 		case CID_3DEDITOR:
 			break;
@@ -130,6 +130,7 @@ static int read_material(struct mf_meshfile *mf, struct chunk *par, const struct
 	struct chunk ck;
 	struct mf_material *mtl;
 	float shin = 0.0f, shinstr = 1.0f;
+	float selfillum = 0.0f;
 
 	if(!(mtl = mf_alloc_mtl())) {
 		fprintf(stderr, "load_3ds: failed to allocate material\n");
@@ -163,7 +164,7 @@ static int read_material(struct mf_meshfile *mf, struct chunk *par, const struct
 			break;
 
 		case CID_MTL_SELFILLUM:
-			if(read_color(&mtl->attr[MF_EMISSIVE].val, &ck, io) == -1) {
+			if(read_percent(&selfillum, &ck, io) == -1) {
 				goto rdfail;
 			}
 			break;
@@ -186,6 +187,9 @@ static int read_material(struct mf_meshfile *mf, struct chunk *par, const struct
 	}
 
 	mtl->attr[MF_SHININESS].val.x = shin * shinstr * 128.0f;
+	mtl->attr[MF_EMISSIVE].val.x = mtl->attr[MF_COLOR].val.x * selfillum;
+	mtl->attr[MF_EMISSIVE].val.y = mtl->attr[MF_COLOR].val.y * selfillum;
+	mtl->attr[MF_EMISSIVE].val.z = mtl->attr[MF_COLOR].val.z * selfillum;
 
 	if(mf_add_material(mf, mtl) == -1) {
 		fprintf(stderr, "load_3ds: failed to add material\n");
@@ -392,7 +396,7 @@ static int read_str(char *buf, int bufsz, struct chunk *par, const struct mf_use
 static int read_chunk(struct chunk *ck, struct chunk *par, const struct mf_userio *io)
 {
 	ck->fpos = io->seek(io->file, 0, MF_SEEK_CUR);
-	if(ck->fpos + CHDR_SIZE > par->endpos) {
+	if(par && ck->fpos + CHDR_SIZE > par->endpos) {
 		return -1;
 	}
 	if(io->read(io->file, &ck->id, sizeof ck->id) < sizeof ck->id) {
