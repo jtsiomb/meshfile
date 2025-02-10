@@ -241,7 +241,9 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 	mesh_done(mf, mesh);
 	mesh = 0;
 
-	result = 0;	/* success */
+	if(!mf_dynarr_empty(mf->meshes)) {
+		result = 0;	/* success */
+	}
 
 end:
 	mf_dynarr_free(varr);
