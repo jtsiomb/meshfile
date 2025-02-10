@@ -102,3 +102,5 @@ fi
 
 [ -n "$CFLAGS" ] && echo "CFLAGS_cfg = $CFLAGS" >>$cfgmk
 [ -n "$LDFLAGS" ] && echo "LDFLAGS_cfg = $LDFLAGS" >>$cfgmk
+
+exit 0
