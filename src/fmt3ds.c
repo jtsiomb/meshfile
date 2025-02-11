@@ -34,7 +34,7 @@ enum {
 	CID_3DEDITOR		= 0x3d3d,
 	CID_ONEUNIT			= 0x0100,
 	CID_MESHVER			= 0x3d3e,
-	CID_OBJECT		= 0x4010,
+	CID_OBJECT			= 0x4000,
 	CID_TRIMESH			= 0x4100,
 	CID_VERTLIST		= 0x4110,
 	CID_FACEDESC		= 0x4120,
@@ -82,7 +82,7 @@ struct chunk {
 
 static int read_material(struct mf_meshfile *mf, struct chunk *par, const struct mf_userio *io);
 static int read_object(struct mf_meshfile *mf, struct chunk *par, const struct mf_userio *io);
-static int read_trimesh(struct mf_mesh *mesh, struct chunk *par, const struct mf_userio *io);
+static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk *par, const struct mf_userio *io);
 static int read_color(mf_vec4 *col, struct chunk *par, const struct mf_userio *io);
 static int read_percent(float *retval, struct chunk *par, const struct mf_userio *io);
 static int read_str(char *buf, int bufsz, struct chunk *par, const struct mf_userio *io);
@@ -105,13 +105,13 @@ int mf_load_3ds(struct mf_meshfile *mf, const struct mf_userio *io)
 			break;
 
 		case CID_MATERIAL:
-			if(read_material(mf, &root, io) == -1) {
+			if(read_material(mf, &ck, io) == -1) {
 				return -1;
 			}
 			break;
 
 		case CID_OBJECT:
-			if(read_object(mf, &root, io) == -1) {
+			if(read_object(mf, &ck, io) == -1) {
 				return -1;
 			}
 			break;
@@ -207,21 +207,28 @@ static int read_object(struct mf_meshfile *mf, struct chunk *par, const struct m
 {
 	struct chunk ck;
 	struct mf_mesh *mesh;
+	struct mf_node *node;
 	char buf[128];
 
 	if(!(mesh = mf_alloc_mesh())) {
 		fprintf(stderr, "load_3ds: failed to allocate mesh\n");
 		return -1;
 	}
+	if(!(node = mf_alloc_node())) {
+		fprintf(stderr, "load_3ds: failed to allocate node\n");
+		mf_free_mesh(mesh);
+		return -1;
+	}
 
-	if(read_str(buf, sizeof buf, par, io) == -1 || !(mesh->name = strdup(buf))) {
+	if(read_str(buf, sizeof buf, par, io) == -1 || !(mesh->name = strdup(buf)) ||
+			!(node->name = strdup(buf))) {
 		goto err;
 	}
 
 	while(read_chunk(&ck, par, io) != -1) {
 		switch(ck.id) {
 		case CID_TRIMESH:
-			if(read_trimesh(mesh, &ck, io) == -1) {
+			if(read_trimesh(mesh, node, &ck, io) == -1) {
 				goto err;
 			}
 			break;
@@ -231,10 +238,27 @@ static int read_object(struct mf_meshfile *mf, struct chunk *par, const struct m
 		}
 	}
 
+	if(!mesh->num_verts) {
+		goto err;
+	}
+
+	if(mf_node_add_mesh(node, mesh) == -1) {
+		fprintf(stderr, "load_3ds: failed to add mesh to node\n");
+		goto err;
+	}
+	if(mf_add_mesh(mf, mesh) == -1) {
+		fprintf(stderr, "load_3ds: failed to add mesh\n");
+		goto err;
+	}
+	if(mf_add_node(mf, node) == -1) {
+		fprintf(stderr, "load_3ds: failed to add node\n");
+		goto err;
+	}
 	return 0;
 err:
 	skip_chunk(par, io);
 	mf_free_mesh(mesh);
+	mf_free_node(node);
 	return -1;
 }
 
@@ -264,12 +288,13 @@ static int read_float(float *val, struct chunk *par, const struct mf_userio *io)
 	return 0;
 }
 
-static int read_trimesh(struct mf_mesh *mesh, struct chunk *par, const struct mf_userio *io)
+static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk *par, const struct mf_userio *io)
 {
 	struct chunk ck;
 	mf_vec3 vec;
-	uint16_t nverts;
-	int i;
+	uint16_t nverts, nfaces, vidx[3];
+	int i, j;
+	float *mptr;
 
 	while(read_chunk(&ck, par, io) != -1) {
 		switch(ck.id) {
@@ -282,7 +307,7 @@ static int read_trimesh(struct mf_mesh *mesh, struct chunk *par, const struct mf
 				if(read_float(&vec.x, &ck, io) == -1 ||
 						read_float(&vec.y, &ck, io) == -1 ||
 						read_float(&vec.z, &ck, io) == -1) {
-					fprintf(stderr, "load_3ds: failed to load vector\n");
+					fprintf(stderr, "load_3ds: failed to read vertex\n");
 					goto err;
 				}
 				if(mf_add_vertex(mesh, vec.x, vec.y, vec.z) == -1) {
@@ -291,9 +316,58 @@ static int read_trimesh(struct mf_mesh *mesh, struct chunk *par, const struct mf
 				}
 			}
 			break;
+
+		case CID_UVLIST:
+			if(read_word(&nverts, &ck, io) == -1) {
+				fprintf(stderr, "load_3ds: failed to read texture coordinate count\n");
+				goto err;
+			}
+			for(i=0; i<(int)nverts; i++) {
+				if(read_float(&vec.x, &ck, io) == -1 || read_float(&vec.y, &ck, io) == -1) {
+					fprintf(stderr, "load_3ds: failed to read texture coordinates\n");
+					goto err;
+				}
+				if(mf_add_texcoord(mesh, vec.x, vec.y) == -1) {
+					fprintf(stderr, "load_3ds: failed to add texcoord\n");
+					goto err;
+				}
+			}
+			break;
+
+		case CID_FACEDESC:
+			if(read_word(&nfaces, &ck, io) == -1) {
+				fprintf(stderr, "load_3ds: failed to read face count\n");
+				goto err;
+			}
+			for(i=0; i<(int)nfaces; i++) {
+				if(read_word(vidx, &ck, io) == -1 || read_word(vidx + 1, &ck, io) == -1 ||
+						read_word(vidx + 2, &ck, io) == -1) {
+					fprintf(stderr, "load_3ds: failed to read face\n");
+					goto err;
+				}
+				if(mf_add_triangle(mesh, vidx[0], vidx[1], vidx[2]) == -1) {
+					fprintf(stderr, "load_3ds: failed to add face\n");
+					goto err;
+				}
+				read_word(vidx, &ck, io);	/* ignore edge flags */
+			}
+			break;
+
+		case CID_LOCALCOORD:
+			mptr = node->matrix;
+			for(i=0; i<4; i++) {
+				for(j=0; j<3; j++) {
+					if(read_float(mptr++, &ck, io) == -1) {
+						fprintf(stderr, "load_3ds: failed to read mesh matrix\n");
+						goto err;
+					}
+				}
+				*mptr++ = i < 3 ? 0 : 1;
+			}
 		}
 	}
 
+	mf_calc_normals(mesh);
 	return 0;
 err:
 	skip_chunk(par, io);
