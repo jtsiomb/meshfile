@@ -493,5 +493,6 @@ static void skip_chunk(struct chunk *ck, const struct mf_userio *io)
 
 int mf_save_3ds(const struct mf_meshfile *mf, const struct mf_userio *io)
 {
+	fprintf(stderr, "mf_save_3ds not implemented yet\n");
 	return -1;
 }
