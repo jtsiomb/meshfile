@@ -41,7 +41,7 @@ enum {
 	CID_FACEMTL			= 0x4130,
 	CID_UVLIST			= 0x4140,
 	CID_SMOOTHLIST		= 0x4150,
-	CID_LOCALCOORD		= 0x4160,
+	CID_MESHMATRIX		= 0x4160,
 	CID_LIGHT			= 0x4600,
 	CID_SPOTLT			= 0x4610,
 	CID_CAMERA			= 0x4700,
@@ -290,11 +290,13 @@ static int read_float(float *val, struct chunk *par, const struct mf_userio *io)
 
 static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk *par, const struct mf_userio *io)
 {
+	static const int mrow_offs[] = {0, 8, 4, 12};
 	struct chunk ck;
 	mf_vec3 vec;
 	uint16_t nverts, nfaces, vidx[3];
 	int i, j;
 	float *mptr;
+	float tmp;
 
 	while(read_chunk(&ck, par, io) != -1) {
 		switch(ck.id) {
@@ -310,7 +312,7 @@ static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk
 					fprintf(stderr, "load_3ds: failed to read vertex\n");
 					goto err;
 				}
-				if(mf_add_vertex(mesh, vec.x, vec.y, vec.z) == -1) {
+				if(mf_add_vertex(mesh, vec.x, vec.z, vec.y) == -1) {
 					fprintf(stderr, "load_3ds: failed to add vertex\n");
 					goto err;
 				}
@@ -345,7 +347,7 @@ static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk
 					fprintf(stderr, "load_3ds: failed to read face\n");
 					goto err;
 				}
-				if(mf_add_triangle(mesh, vidx[0], vidx[1], vidx[2]) == -1) {
+				if(mf_add_triangle(mesh, vidx[0], vidx[2], vidx[1]) == -1) {
 					fprintf(stderr, "load_3ds: failed to add face\n");
 					goto err;
 				}
@@ -353,17 +355,27 @@ static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk
 			}
 			break;
 
-		case CID_LOCALCOORD:
-			mptr = node->matrix;
+			/*
+		case CID_MESHMATRIX:
 			for(i=0; i<4; i++) {
+				mptr = node->matrix + mrow_offs[i];
 				for(j=0; j<3; j++) {
-					if(read_float(mptr++, &ck, io) == -1) {
+					if(read_float(mptr + j, &ck, io) == -1) {
 						fprintf(stderr, "load_3ds: failed to read mesh matrix\n");
 						goto err;
 					}
 				}
-				*mptr++ = i < 3 ? 0 : 1;
+				tmp = mptr[1];
+				mptr[1] = mptr[2];
+				mptr[2] = tmp;
+				mptr[3] = 0;
 			}
+			node->matrix[15] = 1;
+			break;
+			*/
+
+		default:
+			skip_chunk(&ck, io);
 		}
 	}
 
@@ -482,6 +494,9 @@ static int read_chunk(struct chunk *ck, struct chunk *par, const struct mf_useri
 	CONV_LE16(ck->id);
 	CONV_LE32(ck->len);
 	ck->endpos = ck->fpos + ck->len;
+
+	/* printf("%06x-%06x CHUNK %04x len:%u\n", (unsigned int)ck->fpos,
+			(unsigned int)ck->endpos, ck->id, ck->len); */
 	return 0;
 }
 
