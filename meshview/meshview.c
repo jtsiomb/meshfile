@@ -93,7 +93,7 @@ static int init(void)
 	}
 
 	if(!(mf = mf_alloc()) || mf_load(mf, fname) == -1) {
-		fprintf(stderr, "failed to load test.obj\n");
+		fprintf(stderr, "failed to load %s\n", fname);
 		return -1;
 	}
 	reset_view();
@@ -284,18 +284,19 @@ static void reset_view(void)
 
 	cam_theta = cam_phi = 0;
 
-	mf_bounds(mf, &bbox);
-	cam_pos[0] = (bbox.vmin.x + bbox.vmax.x) * 0.5f;
-	cam_pos[1] = (bbox.vmin.y + bbox.vmax.y) * 0.5f;
-	cam_pos[2] = (bbox.vmin.z + bbox.vmax.z) * 0.5f;
+	if(mf_bounds(mf, &bbox) != -1) {
+		cam_pos[0] = (bbox.vmin.x + bbox.vmax.x) * 0.5f;
+		cam_pos[1] = (bbox.vmin.y + bbox.vmax.y) * 0.5f;
+		cam_pos[2] = (bbox.vmin.z + bbox.vmax.z) * 0.5f;
 
-	dx = bbox.vmax.x - bbox.vmin.x;
-	dy = bbox.vmax.y - bbox.vmin.y;
-	dz = bbox.vmax.z - bbox.vmin.z;
+		dx = bbox.vmax.x - bbox.vmin.x;
+		dy = bbox.vmax.y - bbox.vmin.y;
+		dz = bbox.vmax.z - bbox.vmin.z;
 
-	cam_dist = sqrt(dx * dx + dy * dy + dz * dz) * 0.75f;
-	zfar = cam_dist * 50.0f;
-	znear = zfar * 0.001;
+		cam_dist = sqrt(dx * dx + dy * dy + dz * dz) * 0.75f;
+		zfar = cam_dist * 50.0f;
+		znear = zfar * 0.001;
+	}
 	/* force recalc projection */
 	if(win_width > 0) reshape(win_width, win_height);
 }
