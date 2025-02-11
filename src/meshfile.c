@@ -825,6 +825,52 @@ void mf_colorv(struct mf_mesh *m, float *v)
 	im->attrmask |= COLOR;
 }
 
+int mf_calc_normals(struct mf_mesh *m)
+{
+	int i, j;
+	mf_vec3 *v[3], *nptr, vab, vac, vn;
+	struct mf_face *f;
+
+	if(!m->num_verts || !m->num_faces) {
+		return -1;
+	}
+
+	if(!m->normal) {
+		if(!(m->normal = mf_dynarr_alloc(m->num_verts, sizeof *m->normal))) {
+			return -1;
+		}
+	}
+	memset(m->normal, 0, m->num_verts * sizeof *m->normal);
+
+	for(i=0; i<m->num_faces; i++) {
+		f = m->faces + i;
+
+		for(j=0; j<3; j++) {
+			v[j] = m->vertex + f->vidx[j];
+		}
+		vab.x = v[1]->x - v[0]->x;
+		vab.y = v[1]->y - v[0]->y;
+		vab.z = v[1]->z - v[0]->z;
+		vac.x = v[2]->x - v[0]->x;
+		vac.y = v[2]->y - v[0]->y;
+		vac.z = v[2]->z - v[0]->z;
+		mf_cross(&vn, &vab, &vac);
+		mf_normalize(&vn);
+
+		for(j=0; j<3; j++) {
+			nptr = m->normal + f->vidx[j];
+			nptr->x += vn.x;
+			nptr->y += vn.y;
+			nptr->z += vn.z;
+		}
+	}
+
+	for(i=0; i<m->num_verts; i++) {
+		mf_normalize(m->normal + i);
+	}
+	return 0;
+}
+
 /* node functions */
 int mf_node_add_mesh(struct mf_node *n, struct mf_mesh *m)
 {
@@ -1040,8 +1086,11 @@ char *mf_fgets(char *buf, int sz, const struct mf_userio *io)
 {
 	int c;
 	char *dest = buf;
-	while(sz > 1 && (c = mf_fgetc(io)) != -1) {
-		*dest++ = c;
+	char *endp = buf + sz - 1;
+	while((c = mf_fgetc(io)) != -1) {
+		if(dest < endp) {
+			*dest++ = c;
+		}
 		if(c == '\n') break;
 	}
 	if(c == -1 && dest == buf) {

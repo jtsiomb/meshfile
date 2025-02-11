@@ -209,6 +209,8 @@ void mf_tangentv(struct mf_mesh *m, float *v);
 void mf_texcooordv(struct mf_mesh *m, float *v);
 void mf_colorv(struct mf_mesh *m, float *v);
 
+int mf_calc_normals(struct mf_mesh *m);
+
 /* node functions */
 int mf_node_add_mesh(struct mf_node *n, struct mf_mesh *m);
 int mf_node_remove_mesh(struct mf_node *n, struct mf_mesh *m);

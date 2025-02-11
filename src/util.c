@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "util.h"
 
 
@@ -105,6 +106,24 @@ static int b64bits(int c)
 	if(c == '/') return 63;
 
 	return -1;
+}
+
+void mf_cross(mf_vec3 *dest, const mf_vec3 *a, const mf_vec3 *b)
+{
+	dest->x = a->y * b->z - a->z * b->y;
+	dest->y = a->z * b->x - a->x * b->z;
+	dest->z = a->x * b->y - a->y * b->x;
+}
+
+void mf_normalize(mf_vec3 *v)
+{
+	float len = sqrt(v->x * v->x + v->y * v->y + v->z * v->z);
+	if(len > 0.0f) {
+		float s = 1.0f / len;
+		v->x *= s;
+		v->y *= s;
+		v->z *= s;
+	}
 }
 
 void mf_transform(mf_vec3 *dest, const mf_vec3 *v, const float *m)
