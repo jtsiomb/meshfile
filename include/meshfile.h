@@ -91,6 +91,8 @@ struct mf_node {
 
 	struct mf_mesh **meshes;	/* meshes associated with this node */
 	int num_meshes;
+
+	void *udata;
 };
 
 struct mf_mesh {
