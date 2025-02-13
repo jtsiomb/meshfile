@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "mfpriv.h"
 #include "dynarr.h"
 #include "util.h"
@@ -79,13 +80,16 @@ struct chunk {
 	long fpos, endpos;
 };
 
-
 static int read_material(struct mf_meshfile *mf, struct chunk *par, const struct mf_userio *io);
+static int read_map(struct mf_texmap *map, struct chunk *par, const struct mf_userio *io);
 static int read_object(struct mf_meshfile *mf, struct chunk *par, const struct mf_userio *io);
-static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk *par, const struct mf_userio *io);
+static int read_trimesh(struct mf_meshfile *mf, struct mf_mesh *mesh, struct mf_node *node,
+		struct chunk *par, const struct mf_userio *io);
 static int read_color(mf_vec4 *col, struct chunk *par, const struct mf_userio *io);
 static int read_percent(float *retval, struct chunk *par, const struct mf_userio *io);
 static int read_str(char *buf, int bufsz, struct chunk *par, const struct mf_userio *io);
+static int read_word(uint16_t *val, struct chunk *par, const struct mf_userio *io);
+static int read_float(float *val, struct chunk *par, const struct mf_userio *io);
 
 static int read_chunk(struct chunk *ck, struct chunk *par, const struct mf_userio *io);
 static void skip_chunk(struct chunk *ck, const struct mf_userio *io);
@@ -124,13 +128,27 @@ int mf_load_3ds(struct mf_meshfile *mf, const struct mf_userio *io)
 	return 0;
 }
 
+static struct {
+	unsigned int chunk;
+	enum mf_mtlattr_type mtlattr;
+} mapmap[] = {
+	{CID_MTL_TEXMAP1, MF_COLOR},
+	{CID_MTL_ALPHAMAP, MF_ALPHA},
+	{CID_MTL_BUMPMAP, MF_BUMP},
+	{CID_MTL_SHINMAP, MF_SHININESS},
+	{CID_MTL_SPECMAP, MF_SPECULAR},
+	{CID_MTL_REFLMAP, MF_REFLECT},
+	{0, 0}
+};
+
 static int read_material(struct mf_meshfile *mf, struct chunk *par, const struct mf_userio *io)
 {
-	int datalen;
+	int i, datalen;
 	struct chunk ck;
 	struct mf_material *mtl;
 	float shin = 0.0f, shinstr = 1.0f;
 	float selfillum = 0.0f;
+	int attr;
 
 	if(!(mtl = mf_alloc_mtl())) {
 		fprintf(stderr, "load_3ds: failed to allocate material\n");
@@ -181,6 +199,24 @@ static int read_material(struct mf_meshfile *mf, struct chunk *par, const struct
 			}
 			break;
 
+		case CID_MTL_TEXMAP1:
+		case CID_MTL_SPECMAP:
+		case CID_MTL_SHINMAP:
+		case CID_MTL_ALPHAMAP:
+		case CID_MTL_BUMPMAP:
+		case CID_MTL_REFLMAP:
+			attr = -1;
+			for(i=0; mapmap[i].chunk; i++) {
+				if(ck.id == mapmap[i].chunk) {
+					attr = mapmap[i].mtlattr;
+					break;
+				}
+			}
+			if(attr >= 0 && read_map(&mtl->attr[attr].map, &ck, io) == -1) {
+				goto rdfail;
+			}
+			break;
+
 		default:
 			skip_chunk(&ck, io);
 		}
@@ -200,6 +236,69 @@ rdfail:
 	fprintf(stderr, "load_3ds: failed to read material property\n");
 err:
 	mf_free_mtl(mtl);
+	return -1;
+}
+
+static int read_map(struct mf_texmap *map, struct chunk *par, const struct mf_userio *io)
+{
+	int i;
+	struct chunk ck;
+	char buf[64];
+	float *fptr;
+
+	while(read_chunk(&ck, par, io) != -1) {
+		switch(ck.id) {
+		case CID_MAP_FILENAME:
+			if(ck.len <= CHDR_SIZE + 1) {
+				skip_chunk(&ck, io);
+				return 0;
+			}
+			if(read_str(buf, sizeof buf, &ck, io) == -1) {
+				fprintf(stderr, "load_3ds: failed to read texmap name\n");
+				goto err;
+			}
+			if(!(map->name = strdup(buf))) {
+				fprintf(stderr, "load_3ds: failed to allocate texmap name\n");
+				goto err;
+			}
+			for(i=0; map->name[i]; i++) {
+				map->name[i] = tolower(map->name[i]);
+			}
+			break;
+
+		case CID_MAP_UOFFS:
+		case CID_MAP_VOFFS:
+			fptr = ck.id == CID_MAP_UOFFS ? &map->offset.x : &map->offset.y;
+			if(read_float(fptr, &ck, io) == -1) {
+				fprintf(stderr, "load_3ds: failed to read texmap uv offset\n");
+				goto err;
+			}
+			break;
+
+		case CID_MAP_USCALE:
+		case CID_MAP_VSCALE:
+			fptr = ck.id == CID_MAP_USCALE ? &map->scale.x : &map->scale.y;
+			if(read_float(fptr, &ck, io) == -1) {
+				fprintf(stderr, "load_3ds: failed to read texmap uv scale\n");
+				goto err;
+			}
+			break;
+
+		case CID_MAP_UVROT:
+			if(read_float(&map->rot, &ck, io) == -1) {
+				fprintf(stderr, "load_3ds: failed to read uv rotation angle\n");
+				goto err;
+			}
+			break;
+
+		default:
+			skip_chunk(&ck, io);
+		}
+	}
+
+	return 0;
+err:
+	free(map->name);
 	return -1;
 }
 
@@ -228,7 +327,7 @@ static int read_object(struct mf_meshfile *mf, struct chunk *par, const struct m
 	while(read_chunk(&ck, par, io) != -1) {
 		switch(ck.id) {
 		case CID_TRIMESH:
-			if(read_trimesh(mesh, node, &ck, io) == -1) {
+			if(read_trimesh(mf, mesh, node, &ck, io) == -1) {
 				goto err;
 			}
 			break;
@@ -262,33 +361,8 @@ err:
 	return -1;
 }
 
-static int read_word(uint16_t *val, struct chunk *par, const struct mf_userio *io)
-{
-	long fpos = io->seek(io->file, 0, MF_SEEK_CUR);
-	if(fpos + 2 > par->endpos) {
-		return -1;
-	}
-	if(io->read(io->file, val, 2) < 2) {
-		return -1;
-	}
-	CONV_LE16(*val);
-	return 0;
-}
-
-static int read_float(float *val, struct chunk *par, const struct mf_userio *io)
-{
-	long fpos = io->seek(io->file, 0, MF_SEEK_CUR);
-	if(fpos + 4 > par->endpos) {
-		return -1;
-	}
-	if(io->read(io->file, val, 4) < 4) {
-		return -1;
-	}
-	CONV_LEFLT(*val);
-	return 0;
-}
-
-static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk *par, const struct mf_userio *io)
+static int read_trimesh(struct mf_meshfile *mf, struct mf_mesh *mesh, struct mf_node *node,
+		struct chunk *par, const struct mf_userio *io)
 {
 	static const int mrow_offs[] = {0, 8, 4, 12};
 	struct chunk ck;
@@ -297,6 +371,8 @@ static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk
 	int i, j;
 	float *mptr;
 	float tmp;
+	char buf[64];
+	struct mf_material *mtl;
 
 	while(read_chunk(&ck, par, io) != -1) {
 		switch(ck.id) {
@@ -353,6 +429,18 @@ static int read_trimesh(struct mf_mesh *mesh, struct mf_node *node, struct chunk
 				}
 				read_word(vidx, &ck, io);	/* ignore edge flags */
 			}
+			break;
+
+		case CID_FACEMTL:
+			/* TODO: eventually break into multiple meshes if more than one
+			 * materials are referenced
+			 */
+			if(read_str(buf, sizeof buf, &ck, io) != -1) {
+				if((mtl = mf_find_material(mf, buf))) {
+					mesh->mtl = mtl;
+				}
+			}
+			skip_chunk(&ck, io);
 			break;
 
 			/*
@@ -475,6 +563,32 @@ static int read_str(char *buf, int bufsz, struct chunk *par, const struct mf_use
 		}
 	}
 	*buf = 0;
+	return 0;
+}
+
+static int read_word(uint16_t *val, struct chunk *par, const struct mf_userio *io)
+{
+	long fpos = io->seek(io->file, 0, MF_SEEK_CUR);
+	if(fpos + 2 > par->endpos) {
+		return -1;
+	}
+	if(io->read(io->file, val, 2) < 2) {
+		return -1;
+	}
+	CONV_LE16(*val);
+	return 0;
+}
+
+static int read_float(float *val, struct chunk *par, const struct mf_userio *io)
+{
+	long fpos = io->seek(io->file, 0, MF_SEEK_CUR);
+	if(fpos + 4 > par->endpos) {
+		return -1;
+	}
+	if(io->read(io->file, val, 4) < 4) {
+		return -1;
+	}
+	CONV_LEFLT(*val);
 	return 0;
 }
 

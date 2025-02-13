@@ -63,6 +63,7 @@ struct mf_texmap {
 	enum mf_texfilter ufilt, vfilt;
 	enum mf_texwrap uwrap, vwrap;
 	mf_vec3 offset, scale;
+	float rot;
 };
 
 struct mf_mtlattr {

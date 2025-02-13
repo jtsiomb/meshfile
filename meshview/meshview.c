@@ -9,6 +9,7 @@
  *
  * Author: John Tsiombikas <nuclear@mutantstargoat.com>
  */
+#include <GL/gl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,7 +26,7 @@ static int init(void);
 static void cleanup(void);
 static void display(void);
 static void draw_mesh(struct mf_mesh *m);
-static void setup_material(struct mf_material *mtl);
+static int pre_draw(struct mf_mesh *m, int pass);
 static void reset_view(void);
 static void draw_aabox(const mf_aabox *aabb);
 static void reshape(int x, int y);
@@ -33,6 +34,7 @@ static void keypress(unsigned char key, int x, int y);
 static void skeypress(int key, int x, int y);
 static void mouse(int bn, int st, int x, int y);
 static void motion(int x, int y);
+static unsigned int load_texture(const char *fname);
 static void glprintf(int x, int y, const char *fmt, ...);
 static int parse_args(int argc, char **argv);
 
@@ -81,9 +83,7 @@ int main(int argc, char **argv)
 
 static int init(void)
 {
-	int i, width, height;
-	unsigned int tex;
-	void *pixels;
+	int i;
 	struct mf_material *mtl;
 	const char *map;
 
@@ -107,23 +107,19 @@ static int init(void)
 	/* load any textures */
 	for(i=0; i<mf_num_materials(mf); i++) {
 		mtl = mf_get_material(mf, i);
-		if(!mtl->attr[MF_COLOR].map.name) continue;
 		if((map = mf_find_asset(mf, mtl->attr[MF_COLOR].map.name))) {
-
-			if(!(pixels = img_load_pixels(map, &width, &height, IMG_FMT_RGBA32))) {
+			if(!(mtl->attr[MF_COLOR].udata = (void*)load_texture(map))) {
 				fprintf(stderr, "failed to load texture: %s\n", map);
-				continue;
+			} else {
+				printf("loaded texture: %s\n", map);
 			}
-			printf("loaded texture: %s\n", map);
-
-			glGenTextures(1, &tex);
-			glBindTexture(GL_TEXTURE_2D, tex);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-
-			img_free_pixels(pixels);
-			mtl->attr[MF_COLOR].udata = (void*)tex;
+		}
+		if((map = mf_find_asset(mf, mtl->attr[MF_REFLECT].map.name))) {
+			if(!(mtl->attr[MF_REFLECT].udata = (void*)load_texture(map))) {
+				fprintf(stderr, "failed to load envmap: %s\n", map);
+			} else {
+				printf("loaded envmap: %s\n", map);
+			}
 		}
 	}
 
@@ -142,14 +138,16 @@ static void cleanup(void)
 
 static void render_node_tree(struct mf_node *n)
 {
-	int i;
+	int i, pass;
 
 	glPushMatrix();
 	glMultMatrixf(n->matrix);
 
 	for(i=0; i<n->num_meshes; i++) {
-		setup_material(n->meshes[i]->mtl);
-		draw_mesh(n->meshes[i]);
+		pass = 0;
+		while(pre_draw(n->meshes[i], pass++)) {
+			draw_mesh(n->meshes[i]);
+		}
 	}
 
 	for(i=0; i<n->num_child; i++) {
@@ -161,7 +159,7 @@ static void render_node_tree(struct mf_node *n)
 
 static void display(void)
 {
-	int i, x;
+	int i, pass, x;
 	struct mf_mesh *mesh;
 	mf_aabox aabb;
 
@@ -181,9 +179,11 @@ static void display(void)
 		}
 	} else {
 		for(i=0; i<mf_num_meshes(mf); i++) {
+			pass = 0;
 			mesh = mf_get_mesh(mf, i);
-			setup_material(mesh->mtl);
-			draw_mesh(mesh);
+			while(pre_draw(mesh, pass++)) {
+				draw_mesh(mesh);
+			}
 		}
 	}
 
@@ -260,21 +260,62 @@ static void draw_mesh(struct mf_mesh *m)
 	glCallList(dlist);
 }
 
-static void setup_material(struct mf_material *mtl)
+static int pre_draw(struct mf_mesh *m, int pass)
 {
+	static const float white[] = {1, 1, 1, 1};
+	static const float black[] = {0, 0, 0, 1};
 	unsigned int tex;
+	struct mf_material *mtl = m->mtl;
 
-	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, &mtl->attr[MF_COLOR].val.x);
-	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &mtl->attr[MF_SPECULAR].val.x);
-	glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, mtl->attr[MF_SHININESS].val.x);
+	switch(pass) {
+	case 0:
+		glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, &mtl->attr[MF_COLOR].val.x);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &mtl->attr[MF_SPECULAR].val.x);
+		glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, mtl->attr[MF_SHININESS].val.x);
 
-	if(mtl->attr[MF_COLOR].udata && use_tex) {
-		tex = (unsigned int)mtl->attr[MF_COLOR].udata;
-		glEnable(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, tex);
-	} else {
+		if(mtl->attr[MF_COLOR].udata && use_tex) {
+			tex = (unsigned int)mtl->attr[MF_COLOR].udata;
+			glEnable(GL_TEXTURE_2D);
+			glBindTexture(GL_TEXTURE_2D, tex);
+		}
+		return 1;
+
+	case 1:
+		if(mtl->attr[MF_REFLECT].udata && use_tex) {
+			/* envmap pass */
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE);
+			glDepthFunc(GL_LEQUAL);
+
+			glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, black);
+			glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, black);
+			glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, white);
+
+			tex = (unsigned int)mtl->attr[MF_REFLECT].udata;
+			glEnable(GL_TEXTURE_2D);
+			glEnable(GL_TEXTURE_GEN_S);
+			glEnable(GL_TEXTURE_GEN_T);
+			glBindTexture(GL_TEXTURE_2D, tex);
+			glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
+			glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
+			return 1;
+		}
 		glDisable(GL_TEXTURE_2D);
+		break;
+
+	case 2:
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+		glDisable(GL_TEXTURE_GEN_S);
+		glDisable(GL_TEXTURE_GEN_T);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, black);
+		glDepthFunc(GL_LESS);
+		break;
+
+	default:
+		break;
 	}
+	return 0;
 }
 
 static void reset_view(void)
@@ -489,6 +530,26 @@ static void motion(int x, int y)
 	if(bnstate[2]) {
 		zoom(dy);
 	}
+}
+
+static unsigned int load_texture(const char *fname)
+{
+	int width, height;
+	unsigned int tex;
+	void *pixels;
+
+	if(!(pixels = img_load_pixels(fname, &width, &height, IMG_FMT_RGBA32))) {
+		return 0;
+	}
+
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+	img_free_pixels(pixels);
+	return tex;
 }
 
 static int text_width(const char *s)

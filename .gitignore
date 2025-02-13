@@ -15,3 +15,10 @@ core
 config.mk
 meshview/meshview
 meshconv/meshconv
+*.gltf
+*.glb
+*.obj
+*.mtl
+*.3ds
+*.jpg
+*.png
