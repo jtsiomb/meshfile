@@ -338,7 +338,10 @@ static int read_object(struct mf_meshfile *mf, struct chunk *par, const struct m
 	}
 
 	if(!mesh->num_verts) {
-		goto err;
+		skip_chunk(par, io);
+		mf_free_mesh(mesh);
+		mf_free_node(node);
+		return 0;
 	}
 
 	if(mf_node_add_mesh(node, mesh) == -1) {
