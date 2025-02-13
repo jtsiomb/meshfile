@@ -392,7 +392,7 @@ static int read_trimesh(struct mf_meshfile *mf, struct mf_mesh *mesh, struct mf_
 					fprintf(stderr, "load_3ds: failed to read vertex\n");
 					goto err;
 				}
-				if(mf_add_vertex(mesh, vec.x, vec.z, vec.y) == -1) {
+				if(mf_add_vertex(mesh, vec.x, vec.z, -vec.y) == -1) {
 					fprintf(stderr, "load_3ds: failed to add vertex\n");
 					goto err;
 				}
@@ -427,7 +427,7 @@ static int read_trimesh(struct mf_meshfile *mf, struct mf_mesh *mesh, struct mf_
 					fprintf(stderr, "load_3ds: failed to read face\n");
 					goto err;
 				}
-				if(mf_add_triangle(mesh, vidx[0], vidx[2], vidx[1]) == -1) {
+				if(mf_add_triangle(mesh, vidx[0], vidx[1], vidx[2]) == -1) {
 					fprintf(stderr, "load_3ds: failed to add face\n");
 					goto err;
 				}
