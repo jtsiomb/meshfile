@@ -48,6 +48,7 @@ static int bnstate[8];
 static int wire, zup, use_tex = 1;
 static int use_nodes = 1;
 static int show_bounds;
+static int tex_modulate;
 static struct mf_meshfile *mf;
 
 static long total_faces;
@@ -277,6 +278,10 @@ static int pre_draw(struct mf_mesh *m, int pass)
 			tex = (unsigned int)mtl->attr[MF_COLOR].udata;
 			glEnable(GL_TEXTURE_2D);
 			glBindTexture(GL_TEXTURE_2D, tex);
+
+			if(!tex_modulate) {
+				glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, white);
+			}
 		}
 		return 1;
 
@@ -410,6 +415,11 @@ static void keypress(unsigned char key, int x, int y)
 
 	case 't':
 		use_tex ^= 1;
+		glutPostRedisplay();
+		break;
+
+	case 'T':
+		tex_modulate ^= 1;
 		glutPostRedisplay();
 		break;
 
