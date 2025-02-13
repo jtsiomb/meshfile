@@ -4,7 +4,7 @@ obj = meshconv.o
 bin = meshconv
 
 CFLAGS = -I../include
-LDFLAGS = ../libmeshfile.a
+LDFLAGS = ../libmeshfile.a -lm
 
 $(bin): $(obj) ../libmeshfile.a
 	$(CC) -o $@ $(obj) $(LDFLAGS)
