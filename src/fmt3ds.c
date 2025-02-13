@@ -372,10 +372,11 @@ static int read_trimesh(struct mf_meshfile *mf, struct mf_mesh *mesh, struct mf_
 	mf_vec3 vec;
 	uint16_t nverts, nfaces, vidx[3];
 	int i, j;
-	float *mptr;
+	float *mptr = 0;
 	float tmp;
 	char buf[64];
 	struct mf_material *mtl;
+	float inv_xform[16];
 
 	while(read_chunk(&ck, par, io) != -1) {
 		switch(ck.id) {
@@ -446,7 +447,6 @@ static int read_trimesh(struct mf_meshfile *mf, struct mf_mesh *mesh, struct mf_
 			skip_chunk(&ck, io);
 			break;
 
-			/*
 		case CID_MESHMATRIX:
 			for(i=0; i<4; i++) {
 				mptr = node->matrix + mrow_offs[i];
@@ -463,13 +463,15 @@ static int read_trimesh(struct mf_meshfile *mf, struct mf_mesh *mesh, struct mf_
 			}
 			node->matrix[15] = 1;
 			break;
-			*/
 
 		default:
 			skip_chunk(&ck, io);
 		}
 	}
 
+	if(mptr && mf_inverse_matrix(inv_xform, node->matrix) != -1) {
+		mf_transform_mesh(mesh, inv_xform);
+	}
 	mf_calc_normals(mesh);
 	return 0;
 err:

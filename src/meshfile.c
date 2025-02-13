@@ -871,6 +871,33 @@ int mf_calc_normals(struct mf_mesh *m)
 	return 0;
 }
 
+void mf_transform_mesh(struct mf_mesh *m, const float *mat)
+{
+	unsigned int i;
+	float dirmat[16];
+
+	for(i=0; i<m->num_verts; i++) {
+		mf_transform(m->vertex + i, m->vertex + i, mat);
+	}
+	if(!m->normal && !m->tangent) {
+		return;
+	}
+
+	mf_inverse_matrix(dirmat, mat);
+	mf_transpose_matrix(dirmat, dirmat);
+
+	if(m->normal) {
+		for(i=0; i<m->num_verts; i++) {
+			mf_transform_dir(m->normal + i, m->normal + i, dirmat);
+		}
+	}
+	if(m->tangent) {
+		for(i=0; i<m->num_verts; i++) {
+			mf_transform_dir(m->tangent + i, m->tangent + i, dirmat);
+		}
+	}
+}
+
 /* node functions */
 int mf_node_add_mesh(struct mf_node *n, struct mf_mesh *m)
 {

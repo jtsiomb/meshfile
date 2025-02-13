@@ -213,6 +213,7 @@ void mf_texcooordv(struct mf_mesh *m, float *v);
 void mf_colorv(struct mf_mesh *m, float *v);
 
 int mf_calc_normals(struct mf_mesh *m);
+void mf_transform_mesh(struct mf_mesh *m, const float *mat);
 
 /* node functions */
 int mf_node_add_mesh(struct mf_node *n, struct mf_mesh *m);

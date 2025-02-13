@@ -15,11 +15,11 @@ GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include "util.h"
-
 
 static int b64bits(int c);
 
@@ -135,6 +135,15 @@ void mf_transform(mf_vec3 *dest, const mf_vec3 *v, const float *m)
 	dest->y = y;
 }
 
+void mf_transform_dir(mf_vec3 *dest, const mf_vec3 *v, const float *m)
+{
+	float x = v->x * m[0] + v->y * m[4] + v->z * m[8];
+	float y = v->x * m[1] + v->y * m[5] + v->z * m[9];
+	dest->z = v->x * m[2] + v->y * m[6] + v->z * m[10];
+	dest->x = x;
+	dest->y = y;
+}
+
 void mf_mult_matrix(float *dest, const float *a, const float *b)
 {
 	int i, j;
@@ -215,4 +224,114 @@ void mf_prs_matrix(float *mat, const mf_vec3 *p, const mf_vec4 *r, const mf_vec3
 	mf_mult_matrix(mat, tmp, mat);
 	mf_scale_matrix(tmp, s);
 	mf_mult_matrix(mat, tmp, mat);
+}
+
+void mf_transpose_matrix(float *dest, const float *m)
+{
+	int i, j;
+	for(i=0; i<4; i++) {
+		for(j=0; j<i; j++) {
+			int a = i * 4 + j;
+			int b = j * 4 + i;
+			float tmp = m[a];
+			dest[a] = m[b];
+			dest[b] = tmp;
+		}
+	}
+
+	if(dest != m) {
+		dest[0] = m[0];
+		dest[5] = m[5];
+		dest[10] = m[10];
+		dest[15] = m[15];
+	}
+}
+
+/* enough of cgmath for inverting matrices */
+static void cgm_mupper3(float *m)
+{
+	m[3] = m[7] = m[11] = m[12] = m[13] = m[14] = 0.0f;
+	m[15] = 1.0f;
+}
+
+static void cgm_msubmatrix(float *m, int row, int col)
+{
+	float orig[16];
+	int i, j, subi, subj;
+
+	memcpy(orig, m, sizeof orig);
+
+	subi = 0;
+	for(i=0; i<4; i++) {
+		if(i == row) continue;
+
+		subj = 0;
+		for(j=0; j<4; j++) {
+			if(j == col) continue;
+
+			m[subi * 4 + subj++] = orig[i * 4 + j];
+		}
+		subi++;
+	}
+
+	cgm_mupper3(m);
+}
+
+static float cgm_msubdet(const float *m, int row, int col)
+{
+	float tmp[16];
+	float subdet00, subdet01, subdet02;
+
+	memcpy(tmp, m, sizeof tmp);
+	cgm_msubmatrix(tmp, row, col);
+
+	subdet00 = tmp[5] * tmp[10] - tmp[6] * tmp[9];
+	subdet01 = tmp[4] * tmp[10] - tmp[6] * tmp[8];
+	subdet02 = tmp[4] * tmp[9] - tmp[5] * tmp[8];
+
+	return tmp[0] * subdet00 - tmp[1] * subdet01 + tmp[2] * subdet02;
+}
+
+static float cgm_mcofactor(const float *m, int row, int col)
+{
+	float min = cgm_msubdet(m, row, col);
+	return (row + col) & 1 ? -min : min;
+}
+
+static float cgm_mdet(const float *m)
+{
+	return m[0] * cgm_msubdet(m, 0, 0) - m[1] * cgm_msubdet(m, 0, 1) +
+		m[2] * cgm_msubdet(m, 0, 2) - m[3] * cgm_msubdet(m, 0, 3);
+}
+
+int mf_inverse_matrix(float *inv, const float *m)
+{
+	int i, j;
+	float tmp[16];
+	float inv_det;
+	float det = cgm_mdet(m);
+	if(det == 0.0f) return -1;
+	inv_det = 1.0f / det;
+
+	if(inv == m) {
+		memcpy(tmp, m, sizeof tmp);
+		m = tmp;
+	}
+
+	for(i=0; i<4; i++) {
+		for(j=0; j<4; j++) {
+			inv[i * 4 + j] = cgm_mcofactor(m, j, i) * inv_det;	/* transposed */
+		}
+	}
+	return 0;
+}
+
+
+void mf_print_matrix(const float *m)
+{
+	int i;
+	for(i=0; i<4; i++) {
+		printf("%f %f %f %f\n", m[0], m[1], m[2], m[3]);
+		m += 4;
+	}
 }
