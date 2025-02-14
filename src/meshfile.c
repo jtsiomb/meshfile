@@ -34,7 +34,8 @@ struct filefmt filefmt[MF_NUM_FMT] = {
 	{MF_FMT_3DS, {"3ds", 0}, mf_load_3ds, mf_save_3ds},
 	{MF_FMT_JTF, {"jtf", 0}, mf_load_jtf, mf_save_jtf},
 	{MF_FMT_GLTF, {"gltf", 0}, mf_load_gltf, mf_save_gltf},
-	{MF_FMT_OBJ, {"obj", 0}, mf_load_obj, mf_save_obj}
+	{MF_FMT_OBJ, {"obj", 0}, mf_load_obj, mf_save_obj},
+	{0}
 };
 
 static void assetpath_rbdelnode(struct rbnode *n, void *cls);
@@ -48,6 +49,8 @@ static void io_close(void *file);
 static int io_read(void *file, void *buf, int sz);
 static int io_write(void *file, void *buf, int sz);
 static long io_seek(void *file, long offs, int from);
+
+#define MF_FMT_MASK		0xff
 
 #define DEFMAP \
 	{0, {0}, MF_TEX_LINEAR, MF_TEX_LINEAR, MF_TEX_REPEAT, MF_TEX_REPEAT, {0, 0, 0}, {1, 1, 1}}
@@ -114,8 +117,6 @@ int mf_init(struct mf_meshfile *mf)
 	rb_set_delete_func(mf->assetpath, assetpath_rbdelnode, 0);
 
 	init_aabox(&mf->aabox);
-
-	mf->savefmt = mf->autofmt = -1;
 	return 0;
 
 err:
@@ -421,7 +422,7 @@ void mf_update_xform(struct mf_meshfile *mf)
 	}
 }
 
-int mf_load(struct mf_meshfile *mf, const char *fname)
+int mf_load(struct mf_meshfile *mf, const char *fname, unsigned int flags)
 {
 	int res;
 	FILE *fp;
@@ -444,7 +445,7 @@ int mf_load(struct mf_meshfile *mf, const char *fname)
 		*slash = 0;
 	}
 
-	res = mf_load_userio(mf, &io);
+	res = mf_load_userio(mf, &io, flags);
 	fclose(fp);
 
 	mf_update_xform(mf);
@@ -452,10 +453,12 @@ int mf_load(struct mf_meshfile *mf, const char *fname)
 	return res;
 }
 
-int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io)
+int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io, unsigned int flags)
 {
 	int i;
 	long fpos = io->seek(io->file, 0, MF_SEEK_CUR);
+
+	mf->flags = flags;
 
 	for(i=0; i<MF_NUM_FMT; i++) {
 		if(filefmt[i].load(mf, io) == 0) {
@@ -477,7 +480,7 @@ int mf_strcasecmp(const char *a, const char *b)
 	return (int)*(unsigned char*)a - (int)*(unsigned char*)b;
 }
 
-int mf_save(const struct mf_meshfile *mf, const char *fname)
+int mf_save(const struct mf_meshfile *mf, const char *fname, unsigned int flags)
 {
 	int i, j, res;
 	FILE *fp;
@@ -506,12 +509,11 @@ int mf_save(const struct mf_meshfile *mf, const char *fname)
 		*slash = 0;
 	}
 
-	mmf->autofmt = -1;
-	if(mmf->savefmt == -1 && (suffix = strrchr(fname, '.'))) {
+	if((flags & MF_FMT_MASK) == 0 && (suffix = strrchr(fname, '.'))) {
 		for(i=0; i<MF_NUM_FMT; i++) {
 			for(j=0; filefmt[i].suffixes[j]; j++) {
 				if(mf_strcasecmp(suffix + 1, filefmt[i].suffixes[j]) == 0) {
-					mmf->autofmt = filefmt[i].fmt;
+					flags |= filefmt[i].fmt;
 					goto matched;
 				}
 			}
@@ -519,7 +521,7 @@ int mf_save(const struct mf_meshfile *mf, const char *fname)
 	}
 matched:
 
-	res = mf_save_userio(mf, &io);
+	res = mf_save_userio(mf, &io, flags);
 
 	free(mmf->name);
 	free(mmf->dirname);
@@ -529,17 +531,15 @@ matched:
 	return res;
 }
 
-int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io)
+int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io, unsigned int flags)
 {
 	int i, fmt;
 
-	if(mf->savefmt != MF_FMT_AUTO) {
-		fmt = mf->savefmt;
-	} else if(mf->autofmt != MF_FMT_AUTO) {
-		fmt = mf->autofmt;
-	} else {
+	if(!(fmt = flags & MF_FMT_MASK)) {
 		fmt = MF_FMT_OBJ;
 	}
+
+	((struct mf_meshfile*)mf)->flags = flags;
 
 	for(i=0; i<MF_NUM_FMT; i++) {
 		if(filefmt[i].fmt == fmt) {
@@ -547,11 +547,6 @@ int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io)
 		}
 	}
 	return -1;
-}
-
-void mf_save_format(struct mf_meshfile *mf, int fmt)
-{
-	mf->savefmt = fmt;
 }
 
 /* mesh functions */

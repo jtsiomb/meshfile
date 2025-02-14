@@ -93,7 +93,7 @@ static int init(void)
 		return -1;
 	}
 
-	if(!(mf = mf_alloc()) || mf_load(mf, fname) == -1) {
+	if(!(mf = mf_alloc()) || mf_load(mf, fname, 0) == -1) {
 		fprintf(stderr, "failed to load %s\n", fname);
 		return -1;
 	}
@@ -437,7 +437,7 @@ static void keypress(unsigned char key, int x, int y)
 	case 0x13:
 	case 's':
 		if(glutGetModifiers() & GLUT_ACTIVE_CTRL) {
-			mf_save(mf, "foo.obj");
+			mf_save(mf, "foo.obj", MF_FMT_OBJ);
 		}
 		break;
 

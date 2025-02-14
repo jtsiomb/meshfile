@@ -12,10 +12,11 @@
 
 int main(int argc, char **argv)
 {
-	int i, j, fmt = -1;
-	const char *typestr[] = {"obj", "jtf", "gltf"};
+	int i, j, fmt = MF_FMT_AUTO;
+	/* must match MF_FMT enums in meshfile.h */
+	const char *typestr[] = {0, "obj", "jtf", "gltf", "3ds"};
 	const char *typedesc[] = {
-		"Wavefront OBJ", "Just Triangle Faces", "GL Transmission Format"
+		0, "Wavefront OBJ", "Just Triangle Faces", "GL Transmission Format", "3D Studio"
 	};
 	const char *srcfile = 0;
 	const char *destfile = 0;
@@ -28,7 +29,7 @@ int main(int argc, char **argv)
 					fprintf(stderr, "%s must be followed by a file format id, see -l\n", argv[i - 1]);
 					return 1;
 				}
-				for(j=0; j<MF_NUM_FMT; j++) {
+				for(j=1; j<MF_NUM_FMT; j++) {
 					if(strcmp(argv[i], typestr[j]) == 0) {
 						fmt = j;
 						break;
@@ -41,7 +42,7 @@ int main(int argc, char **argv)
 
 			} else if(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "-list") == 0) {
 				printf("available file formats:\n");
-				for(j=0; j<MF_NUM_FMT; j++) {
+				for(j=1; j<MF_NUM_FMT; j++) {
 					printf(" - %s: %s\n", typestr[j], typedesc[j]);
 				}
 				return 0;
@@ -80,15 +81,12 @@ int main(int argc, char **argv)
 		fprintf(stderr, "failed to allocate meshfile\n");
 		return 1;
 	}
-	if(mf_load(mf, srcfile) == -1) {
+	if(mf_load(mf, srcfile, MF_NOPROC) == -1) {
 		fprintf(stderr, "failed to load: %s\n", srcfile);
 		return 1;
 	}
 
-	if(fmt != -1) {
-		mf_save_format(mf, fmt);
-	}
-	if(mf_save(mf, destfile) == -1) {
+	if(mf_save(mf, destfile, fmt) == -1) {
 		fprintf(stderr, "failed to save: %s\n", destfile);
 		return 1;
 	}

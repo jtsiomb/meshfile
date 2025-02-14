@@ -267,7 +267,7 @@ static int mesh_done(struct mf_meshfile *mf, struct mf_mesh *mesh)
 			fprintf(stderr, "mf_load: ignoring mesh with inconsistent attributes\n");
 			goto reset_mesh;
 		}
-	} else {
+	} else if(!(mf->flags & MF_NOPROC)) {
 		mf_calc_normals(mesh);
 	}
 	if(mesh->texcoord) {

@@ -50,7 +50,7 @@ struct mf_meshfile {
 	mf_aabox aabox;
 
 	struct rbtree *assetpath;
-	int savefmt, autofmt;
+	unsigned int flags;
 };
 
 struct filefmt {

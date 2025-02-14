@@ -124,15 +124,23 @@ struct mf_userio {
 	long (*seek)(void*, long, int);
 };
 
-/* parameter to mf_save_format */
+/* load flags */
 enum {
+	MF_APPLY_XFORM		= 0x0001,	/* pre-transform to world space */
+	MF_GEN_TANGENTS		= 0x0002,	/* compute tangents if missing */
+
+	MF_NOPROC			= 0x8000	/* don't perform any processing on load */
+};
+
+/* file format part of the save flags */
+enum {
+	MF_FMT_AUTO,
 	MF_FMT_OBJ,		/* wavefront OBJ */
 	MF_FMT_JTF,		/* Just Triangle Faces: http://runtimeterror.com/tech/jtf */
 	MF_FMT_GLTF,	/* GL Transmission Format */
 	MF_FMT_3DS,		/* 3D Studio */
 	MF_NUM_FMT
 };
-#define MF_FMT_AUTO		(-1)
 
 struct mf_meshfile;
 
@@ -180,13 +188,11 @@ int mf_add_node(struct mf_meshfile *mf, struct mf_node *n);
 int mf_bounds(const struct mf_meshfile *mf, mf_aabox *bb);
 void mf_update_xform(struct mf_meshfile *mf);
 
-int mf_load(struct mf_meshfile *mf, const char *fname);
-int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io);
+int mf_load(struct mf_meshfile *mf, const char *fname, unsigned int flags);
+int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io, unsigned int flags);
 
-int mf_save(const struct mf_meshfile *mf, const char *fname);
-int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io);
-
-void mf_save_format(struct mf_meshfile *mf, int fmt);
+int mf_save(const struct mf_meshfile *mf, const char *fname, unsigned int flags);
+int mf_save_userio(const struct mf_meshfile *mf, const struct mf_userio *io, unsigned int flags);
 
 /* mesh functions */
 void mf_clear_mesh(struct mf_mesh *m);
