@@ -472,9 +472,6 @@ static int read_trimesh(struct mf_meshfile *mf, struct mf_mesh *mesh, struct mf_
 	if(mptr && mf_inverse_matrix(inv_xform, node->matrix) != -1) {
 		mf_transform_mesh(mesh, inv_xform);
 	}
-	if(!(mf->flags & MF_NOPROC)) {
-		mf_calc_normals(mesh);
-	}
 	return 0;
 err:
 	skip_chunk(par, io);
