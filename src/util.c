@@ -108,6 +108,25 @@ static int b64bits(int c)
 	return -1;
 }
 
+void mf_vadd(mf_vec3 *dest, const mf_vec3 *a, const mf_vec3 *b)
+{
+	dest->x = a->x + b->x;
+	dest->y = a->y + b->y;
+	dest->z = a->z + b->z;
+}
+
+void mf_vsub(mf_vec3 *dest, const mf_vec3 *a, const mf_vec3 *b)
+{
+	dest->x = a->x - b->x;
+	dest->y = a->y - b->y;
+	dest->z = a->z - b->z;
+}
+
+float mf_dot(const mf_vec3 *a, const mf_vec3 *b)
+{
+	return a->x * b->x + a->y * b->y + a->z * b->z;
+}
+
 void mf_cross(mf_vec3 *dest, const mf_vec3 *a, const mf_vec3 *b)
 {
 	dest->x = a->y * b->z - a->z * b->y;

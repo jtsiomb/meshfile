@@ -394,6 +394,7 @@ static void reshape(int x, int y)
 
 static void keypress(unsigned char key, int x, int y)
 {
+	int i;
 	static int saved_win_xsz, saved_win_ysz;
 
 	switch(key) {
@@ -456,6 +457,18 @@ static void keypress(unsigned char key, int x, int y)
 		glutPostRedisplay();
 		break;
 
+	case 'p':
+		mf_apply_xform(mf);
+		for(i=0; i<mf_num_meshes(mf); i++) {
+			struct mf_mesh *mesh = mf_get_mesh(mf, i);
+			if(mesh->udata) {
+				glDeleteLists((unsigned int)mesh->udata, 1);
+				mesh->udata = 0;
+			}
+		}
+		glutPostRedisplay();
+		break;
+
 	default:
 		break;
 	}
@@ -474,7 +487,7 @@ static void skeypress(int key, int x, int y)
 static void zoom(float delta)
 {
 	float zoomspeed = cam_dist * 0.01f;
-	if(zoomspeed > 1.0f) zoomspeed = 1.0f;
+	if(zoomspeed > 5.0f) zoomspeed = 5.0f;
 	cam_dist += delta * zoomspeed;
 
 	if(cam_dist < 0.001) cam_dist = 0.001;

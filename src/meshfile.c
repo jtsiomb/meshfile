@@ -291,22 +291,22 @@ const char *mf_get_name(const struct mf_meshfile *mf)
 	return mf->name;
 }
 
-int mf_num_meshes(const struct mf_meshfile *mf)
+unsigned int mf_num_meshes(const struct mf_meshfile *mf)
 {
 	return mf_dynarr_size(mf->meshes);
 }
 
-int mf_num_materials(const struct mf_meshfile *mf)
+unsigned int mf_num_materials(const struct mf_meshfile *mf)
 {
 	return mf_dynarr_size(mf->mtl);
 }
 
-int mf_num_nodes(const struct mf_meshfile *mf)
+unsigned int mf_num_nodes(const struct mf_meshfile *mf)
 {
 	return mf_dynarr_size(mf->nodes);
 }
 
-int mf_num_topnodes(const struct mf_meshfile *mf)
+unsigned int mf_num_topnodes(const struct mf_meshfile *mf)
 {
 	return mf_dynarr_size(mf->topnodes);
 }
@@ -422,6 +422,24 @@ void mf_update_xform(struct mf_meshfile *mf)
 	}
 }
 
+int mf_apply_xform(struct mf_meshfile *mf)
+{
+	unsigned int i, j, num_nodes;
+	struct mf_node *node;
+
+	num_nodes = mf_num_nodes(mf);
+	for(i=0; i<num_nodes; i++) {
+		node = mf_get_node(mf, i);
+		for(j=0; j<node->num_meshes; j++) {
+			/* TODO clone meshes referenced by more than one nodes */
+			mf_transform_mesh(node->meshes[j], node->global_matrix);
+		}
+		mf_id_matrix(node->matrix);
+		mf_id_matrix(node->global_matrix);
+	}
+	return 0;
+}
+
 int mf_load(struct mf_meshfile *mf, const char *fname, unsigned int flags)
 {
 	int res;
@@ -447,28 +465,50 @@ int mf_load(struct mf_meshfile *mf, const char *fname, unsigned int flags)
 
 	res = mf_load_userio(mf, &io, flags);
 	fclose(fp);
-
-	mf_update_xform(mf);
-	calc_aabox(mf);
 	return res;
 }
 
 int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io, unsigned int flags)
 {
-	int i;
+	unsigned int i, num_meshes;
+	struct mf_mesh *mesh;
 	long fpos = io->seek(io->file, 0, MF_SEEK_CUR);
 
 	mf->flags = flags;
 
 	for(i=0; i<MF_NUM_FMT; i++) {
 		if(filefmt[i].load(mf, io) == 0) {
-			return 0;
+			break;
 		}
 		if(io->seek(io->file, fpos, MF_SEEK_SET) == -1) {
 			return -1;
 		}
 	}
-	return -1;
+
+	if(i == MF_NUM_FMT) {
+		return -1;
+	}
+	mf_update_xform(mf);
+	calc_aabox(mf);
+
+	/* do any post-processing after load */
+	if(flags & MF_NOPROC) return 0;
+
+	if(flags & MF_GEN_TANGENTS) {
+		num_meshes = mf_num_meshes(mf);
+		for(i=0; i<num_meshes; i++) {
+			mesh = mf_get_mesh(mf, i);
+			mf_calc_tangents(mesh);
+		}
+	}
+
+	if(flags & MF_APPLY_XFORM) {
+		if(mf_apply_xform(mf) == -1) {
+			mf_clear(mf);
+			return -1;
+		}
+	}
+	return 0;
 }
 
 int mf_strcasecmp(const char *a, const char *b)
@@ -862,6 +902,76 @@ int mf_calc_normals(struct mf_mesh *m)
 
 	for(i=0; i<m->num_verts; i++) {
 		mf_normalize(m->normal + i);
+	}
+	return 0;
+}
+
+/* adapted from: https://terathon.com/blog/tangent-space.html */
+int mf_calc_tangents(struct mf_mesh *m)
+{
+	unsigned int i, j, vidx;
+	float r, dot;
+	mf_vec3 vpos[3], vnorm[3], *vtang[3], va, vb, udir, nprojt;
+	mf_vec2 uv[3], ta, tb;
+	struct mf_face *face;
+
+	if(!m->num_verts || !m->num_faces || !m->texcoord) {
+		return -1;
+	}
+
+	if(!m->normal) {
+		if(mf_calc_normals(m) == -1) {
+			return -1;
+		}
+	}
+
+	if(!m->tangent) {
+		if(!(m->tangent = mf_dynarr_alloc(m->num_verts, sizeof *m->tangent))) {
+			return -1;
+		}
+	}
+	memset(m->tangent, 0, m->num_verts * sizeof *m->normal);
+
+	face = m->faces;
+	for(i=0; i<m->num_faces; i++) {
+		for(j=0; j<3; j++) {
+			vidx = face->vidx[j];
+			vpos[j] = m->vertex[vidx];
+			uv[j] = m->texcoord[vidx];
+			vtang[j] = m->tangent + vidx;
+		}
+
+		mf_vsub(&va, vpos + 1, vpos);
+		mf_vsub(&vb, vpos + 2, vpos);
+		ta.x = uv[1].x - uv[0].x;
+		ta.y = uv[1].y - uv[0].y;
+		tb.x = uv[2].x - uv[0].x;
+		tb.y = uv[2].y - uv[0].y;
+		r = 1.0f / (ta.x * tb.y - tb.x * ta.y);
+
+		udir.x = (tb.y * va.x - ta.y * vb.x) * r;
+		udir.y = (tb.y * va.y - ta.y * vb.y) * r;
+		udir.z = (tb.y * va.z - ta.y * vb.z) * r;
+
+		mf_vadd(vtang[0], vtang[0], &udir);
+		mf_vadd(vtang[1], vtang[1], &udir);
+		mf_vadd(vtang[2], vtang[2], &udir);
+		face++;
+	}
+
+	face = m->faces;
+	for(i=0; i<m->num_faces; i++) {
+		for(j=0; j<3; j++) {
+			vidx = face->vidx[j];
+			vnorm[j] = m->normal[vidx];
+			vtang[j] = m->tangent + vidx;
+			dot = mf_dot(vnorm + j, vtang[j]);
+			nprojt.x = vnorm[j].x * dot;
+			nprojt.y = vnorm[j].y * dot;
+			nprojt.z = vnorm[j].z * dot;
+			mf_vsub(vtang[j], vtang[j], &nprojt);
+			mf_normalize(vtang[j]);
+		}
 	}
 	return 0;
 }

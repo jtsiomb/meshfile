@@ -167,10 +167,10 @@ void mf_destroy_node(struct mf_node *node);
 
 const char *mf_get_name(const struct mf_meshfile *mf);
 
-int mf_num_meshes(const struct mf_meshfile *mf);
-int mf_num_materials(const struct mf_meshfile *mf);
-int mf_num_nodes(const struct mf_meshfile *mf);
-int mf_num_topnodes(const struct mf_meshfile *mf);
+unsigned int mf_num_meshes(const struct mf_meshfile *mf);
+unsigned int mf_num_materials(const struct mf_meshfile *mf);
+unsigned int mf_num_nodes(const struct mf_meshfile *mf);
+unsigned int mf_num_topnodes(const struct mf_meshfile *mf);
 
 struct mf_mesh *mf_get_mesh(const struct mf_meshfile *mf, int idx);
 struct mf_material *mf_get_material(const struct mf_meshfile *mf, int idx);
@@ -187,6 +187,7 @@ int mf_add_node(struct mf_meshfile *mf, struct mf_node *n);
 
 int mf_bounds(const struct mf_meshfile *mf, mf_aabox *bb);
 void mf_update_xform(struct mf_meshfile *mf);
+int mf_apply_xform(struct mf_meshfile *mf);
 
 int mf_load(struct mf_meshfile *mf, const char *fname, unsigned int flags);
 int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io, unsigned int flags);
@@ -219,6 +220,7 @@ void mf_texcooordv(struct mf_mesh *m, float *v);
 void mf_colorv(struct mf_mesh *m, float *v);
 
 int mf_calc_normals(struct mf_mesh *m);
+int mf_calc_tangents(struct mf_mesh *m);
 void mf_transform_mesh(struct mf_mesh *m, const float *mat);
 
 /* node functions */
