@@ -34,6 +34,7 @@ struct filefmt filefmt[MF_NUM_FMT] = {
 	{MF_FMT_3DS, {"3ds", 0}, mf_load_3ds, mf_save_3ds},
 	{MF_FMT_JTF, {"jtf", 0}, mf_load_jtf, mf_save_jtf},
 	{MF_FMT_GLTF, {"gltf", 0}, mf_load_gltf, mf_save_gltf},
+	{MF_FMT_STL, {"stl", 0}, mf_load_stl, mf_save_stl},
 	{MF_FMT_OBJ, {"obj", 0}, mf_load_obj, mf_save_obj},
 	{0}
 };
@@ -58,7 +59,7 @@ static long io_seek(void *file, long offs, int from);
 static struct mf_material defmtl = {
 	"default material",
 	{
-		{MF_COLOR, {1, 1, 1, 1}, DEFMAP},
+		{MF_COLOR, {0.7, 0.7, 0.7, 0.7}, DEFMAP},
 		{MF_SPECULAR, {0}, DEFMAP},
 		{MF_SHININESS, {1}, DEFMAP},
 		{MF_ROUGHNESS, {1, 1, 1, 1}, DEFMAP},
@@ -477,7 +478,7 @@ int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io, unsigned 
 	mf->flags = flags;
 
 	for(i=0; i<MF_NUM_FMT; i++) {
-		if(filefmt[i].load(mf, io) == 0) {
+		if(filefmt[i].load && filefmt[i].load(mf, io) == 0) {
 			break;
 		}
 		if(io->seek(io->file, fpos, MF_SEEK_SET) == -1) {

@@ -14,9 +14,10 @@ int main(int argc, char **argv)
 {
 	int i, j, fmt = MF_FMT_AUTO;
 	/* must match MF_FMT enums in meshfile.h */
-	const char *typestr[] = {0, "obj", "jtf", "gltf", "3ds"};
+	const char *typestr[] = {0, "obj", "jtf", "gltf", "3ds", "stl"};
 	const char *typedesc[] = {
-		0, "Wavefront OBJ", "Just Triangle Faces", "GL Transmission Format", "3D Studio"
+		0, "Wavefront OBJ", "Just Triangle Faces", "GL Transmission Format",
+		"3D Studio", "STL"
 	};
 	const char *srcfile = 0;
 	const char *destfile = 0;

@@ -139,6 +139,7 @@ enum {
 	MF_FMT_JTF,		/* Just Triangle Faces: http://runtimeterror.com/tech/jtf */
 	MF_FMT_GLTF,	/* GL Transmission Format */
 	MF_FMT_3DS,		/* 3D Studio */
+	MF_FMT_STL,		/* STL */
 	MF_NUM_FMT
 };
 

@@ -1,6 +1,3 @@
-src = $(wildcard src/*.c)
-src = src/meshfile.c src/fmtobj.c src/fmtgltf.c src/fmtjtf.c src/util.c \
-	  src/dynarr.c src/rbtree.c src/json.c
 obj = $(src:.c=.o)
 dep = $(src:.c=.d)
 

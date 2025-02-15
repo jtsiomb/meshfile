@@ -40,6 +40,8 @@ int mf_save_gltf(const struct mf_meshfile *mf, const struct mf_userio *io);
 int mf_load_3ds(struct mf_meshfile *mf, const struct mf_userio *io);
 int mf_save_3ds(const struct mf_meshfile *mf, const struct mf_userio *io);
 
+int mf_load_stl(struct mf_meshfile *mf, const struct mf_userio *io);
+int mf_save_stl(const struct mf_meshfile *mf, const struct mf_userio *io);
 
 struct mf_meshfile {
 	char *name;
