@@ -24,6 +24,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 static int read_float(float *ret, const struct mf_userio *io);
 static int read_vector(mf_vec3 *vec, const struct mf_userio *io);
 
+static int write_vec(mf_vec3 v, const struct mf_userio *io);
+static int write_mesh(const struct mf_mesh *mesh, const float *mat, const struct mf_userio *io);
 
 int mf_load_stl(struct mf_meshfile *mf, const struct mf_userio *io)
 {
@@ -120,8 +122,88 @@ static int read_vector(mf_vec3 *vec, const struct mf_userio *io)
 	return 0;
 }
 
+static const char id[] = "STL written by meshfile";
 int mf_save_stl(const struct mf_meshfile *mf, const struct mf_userio *io)
 {
-	fprintf(stderr, "save_stl: not implemented yet\n");
-	return -1;
+	unsigned int i, j, num_nodes;
+	char buf[80];
+	uint32_t total_faces = 0;
+	struct mf_node *node;
+
+	for(i=0; i<80; i++) {
+		buf[i] = id[i % sizeof id] ? id[i % sizeof id] : ' ';
+	}
+	if(io->write(io->file, buf, sizeof buf) < sizeof buf) {
+		fprintf(stderr, "save_stl: failed to write header\n");
+		return -1;
+	}
+
+	num_nodes = mf_num_nodes(mf);
+	for(i=0; i<num_nodes; i++) {
+		node = mf_get_node(mf, i);
+		for(j=0; j<node->num_meshes; j++) {
+			total_faces += node->meshes[j]->num_faces;
+		}
+	}
+	CONV_LE32(total_faces);
+	if(io->write(io->file, &total_faces, sizeof total_faces) < sizeof total_faces) {
+		fprintf(stderr, "save_stl: failed to write face count\n");
+		return -1;
+	}
+
+	for(i=0; i<num_nodes; i++) {
+		node = mf_get_node(mf, i);
+		for(j=0; j<node->num_meshes; j++) {
+			if(write_mesh(node->meshes[j], node->global_matrix, io) == -1) {
+				fprintf(stderr, "save_stl: failed to write mesh\n");
+				return -1;
+			}
+		}
+	}
+	return 0;
+}
+
+static int write_vec(mf_vec3 v, const struct mf_userio *io)
+{
+	CONV_LEFLT(v.x);
+	CONV_LEFLT(v.y);
+	CONV_LEFLT(v.z);
+	if(io->write(io->file, &v.x, sizeof v.x) < sizeof v.x) {
+		return -1;
+	}
+	if(io->write(io->file, &v.z, sizeof v.z) < sizeof v.z) {
+		return -1;
+	}
+	if(io->write(io->file, &v.y, sizeof v.y) < sizeof v.y) {
+		return -1;
+	}
+	return 0;
+}
+
+static int write_mesh(const struct mf_mesh *mesh, const float *mat, const struct mf_userio *io)
+{
+	unsigned int i, j;
+	mf_vec3 va, vb, v[3], norm;
+	struct mf_face *face;
+	static uint16_t zero;
+
+	for(i=0; i<mesh->num_faces; i++) {
+		face = mesh->faces + i;
+		for(j=0; j<3; j++) {
+			mf_transform(v + j, mesh->vertex + face->vidx[j], mat);
+		}
+		mf_vsub(&va, v + 1, v);
+		mf_vsub(&vb, v + 2, v);
+		mf_cross(&norm, &va, &vb);
+		mf_normalize(&norm);
+
+		if(write_vec(norm, io) == -1) {
+			return -1;
+		}
+		if(write_vec(v[0], io) == -1) return -1;
+		if(write_vec(v[2], io) == -1) return -1;
+		if(write_vec(v[1], io) == -1) return -1;
+		io->write(io->file, &zero, 2);
+	}
+	return 0;
 }

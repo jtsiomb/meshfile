@@ -3,8 +3,10 @@ PREFIX = /usr/local
 obj = meshconv.o
 bin = meshconv
 
-CFLAGS = -I../include
+CFLAGS = $(warn) $(opt) $(dbg) -I../include $(dep)
 LDFLAGS = ../libmeshfile.a -lm
+
+include ../config.mk
 
 $(bin): $(obj) ../libmeshfile.a
 	$(CC) -o $@ $(obj) $(LDFLAGS)
