@@ -16,6 +16,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 #include <stdio.h>
+#include <string.h>
 #include "mfpriv.h"
 #include "dynarr.h"
 #include "util.h"
@@ -53,6 +54,10 @@ int mf_load_stl(struct mf_meshfile *mf, const struct mf_userio *io)
 	}
 	if(!(node = mf_alloc_node())) {
 		fprintf(stderr, "load_stl: failed to allocate node\n");
+		goto err;
+	}
+	if(!(mesh->name = strdup(mf->name)) || !(node->name = strdup(mf->name))) {
+		fprintf(stderr, "load_stl: failed to allocate name\n");
 		goto err;
 	}
 

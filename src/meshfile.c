@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <float.h>
 #include <ctype.h>
 #include <errno.h>
+#include <assert.h>
 #include "meshfile.h"
 #include "mfpriv.h"
 #include "dynarr.h"
@@ -48,7 +49,7 @@ static void expand_aabox(mf_aabox *box, mf_vec3 v);
 static void *io_open(const char *fname, const char *mode);
 static void io_close(void *file);
 static int io_read(void *file, void *buf, int sz);
-static int io_write(void *file, void *buf, int sz);
+static int io_write(void *file, const void *buf, int sz);
 static long io_seek(void *file, long offs, int from);
 
 #define MF_FMT_MASK		0xff
@@ -369,6 +370,8 @@ int mf_add_mesh(struct mf_meshfile *mf, struct mf_mesh *m)
 {
 	void *tmp;
 
+	assert(m->name);
+
 	if(!(tmp = mf_dynarr_push(mf->meshes, &m))) {
 		return -1;
 	}
@@ -380,6 +383,8 @@ int mf_add_material(struct mf_meshfile *mf, struct mf_material *mtl)
 {
 	void *tmp;
 
+	assert(mtl->name);
+
 	if(!(tmp = mf_dynarr_push(mf->mtl, &mtl))) {
 		return -1;
 	}
@@ -390,6 +395,8 @@ int mf_add_material(struct mf_meshfile *mf, struct mf_material *mtl)
 int mf_add_node(struct mf_meshfile *mf, struct mf_node *n)
 {
 	void *tmp;
+
+	assert(n->name);
 
 	if(!(tmp = mf_dynarr_push(mf->nodes, &n))) {
 		return -1;
@@ -495,8 +502,17 @@ int mf_load_userio(struct mf_meshfile *mf, const struct mf_userio *io, unsigned 
 	/* do any post-processing after load */
 	if(flags & MF_NOPROC) return 0;
 
+	num_meshes = mf_num_meshes(mf);
+	for(i=0; i<num_meshes; i++) {
+		mesh = mf_get_mesh(mf, i);
+		if(!mesh->normal) {
+			if(mf_calc_normals(mesh) == -1) {
+				return -1;
+			}
+		}
+	}
+
 	if(flags & MF_GEN_TANGENTS) {
-		num_meshes = mf_num_meshes(mf);
 		for(i=0; i<num_meshes; i++) {
 			mesh = mf_get_mesh(mf, i);
 			mf_calc_tangents(mesh);
@@ -538,6 +554,7 @@ int mf_save(const struct mf_meshfile *mf, const char *fname, unsigned int flags)
 	io.close = io_close;
 	io.file = fp;
 	io.write = io_write;
+	io.seek = io_seek;
 
 	mmf = (struct mf_meshfile*)mf;
 	orig_name = mf->name;
@@ -1193,7 +1210,7 @@ static int io_read(void *file, void *buf, int sz)
 	return rdbytes;
 }
 
-static int io_write(void *file, void *buf, int sz)
+static int io_write(void *file, const void *buf, int sz)
 {
 	size_t wrbytes = fwrite(buf, 1, sz, file);
 	if(!wrbytes) return -1;

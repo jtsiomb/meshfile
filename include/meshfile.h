@@ -120,7 +120,7 @@ struct mf_userio {
 	void *(*open)(const char*, const char*);
 	void (*close)(void*);
 	int (*read)(void*, void*, int);
-	int (*write)(void*, void*, int);
+	int (*write)(void*, const void*, int);
 	long (*seek)(void*, long, int);
 };
 

@@ -364,10 +364,11 @@ err:
 	return -1;
 }
 
+static const int mrow_offs[] = {0, 8, 4, 12};
+
 static int read_trimesh(struct mf_meshfile *mf, struct mf_mesh *mesh, struct mf_node *node,
 		struct chunk *par, const struct mf_userio *io)
 {
-	static const int mrow_offs[] = {0, 8, 4, 12};
 	struct chunk ck;
 	mf_vec3 vec;
 	uint16_t nverts, nfaces, vidx[3];
@@ -624,8 +625,339 @@ static void skip_chunk(struct chunk *ck, const struct mf_userio *io)
 }
 
 
+static int write_3ded(const struct mf_meshfile *mf, const struct mf_userio *io);
+static int write_mtl(const struct mf_material *mtl, const struct mf_userio *io);
+static int write_mtlcolor(uint16_t id, const float *col, const struct mf_userio *io);
+static int write_mtlperc(uint16_t id, float val, const struct mf_userio *io);
+static int write_map(uint16_t id, const struct mf_texmap *map, const struct mf_userio *io);
+static int write_mesh(const struct mf_node *node, const struct mf_mesh *mesh, const struct mf_userio *io);
+static int write_chunkhdr(uint16_t id, uint32_t sz, const struct mf_userio *io);
+static int write_chunk_dword(uint16_t id, uint32_t sz, uint32_t val, const struct mf_userio *io);
+static int write_chunk_flt(uint16_t id, uint32_t sz, float val, const struct mf_userio *io);
+static int write_chunk_str(uint16_t id, uint32_t sz, const char *str, const struct mf_userio *io);
+static int write_word(uint16_t val, const struct mf_userio *io);
+static int write_dword(uint32_t val, const struct mf_userio *io);
+static int write_float(float val, const struct mf_userio *io);
+static int write_vector(mf_vec3 v, const struct mf_userio *io);
+
 int mf_save_3ds(const struct mf_meshfile *mf, const struct mf_userio *io)
 {
-	fprintf(stderr, "mf_save_3ds not implemented yet\n");
-	return -1;
+	uint32_t filesz;
+
+	if(write_chunkhdr(CID_MAIN, 0, io) == -1) {
+		fprintf(stderr, "save_3ds: failed to write main chunk header\n");
+		return -1;
+	}
+	if(write_chunk_dword(CID_VERSION, CHDR_SIZE + 4, 3, io) == -1) {
+		fprintf(stderr, "save_3ds: failed to write version chunk\n");
+		return -1;
+	}
+
+	if(write_3ded(mf, io) == -1) {
+		return -1;
+	}
+
+	/* go back and patch the main chunk length */
+	filesz = io->seek(io->file, 0, MF_SEEK_END);
+	io->seek(io->file, 2, MF_SEEK_SET);
+	if(write_dword(filesz, io) == -1) {
+		fprintf(stderr, "save_3ds: failed to patch main chunk size\n");
+		return -1;
+	}
+	return 0;
+}
+
+
+static int write_3ded(const struct mf_meshfile *mf, const struct mf_userio *io)
+{
+	int i, j, num;
+	long fpos;
+	uint32_t len;
+	struct mf_node *node;
+
+	fpos = io->seek(io->file, 0, MF_SEEK_CUR);
+	if(write_chunkhdr(CID_3DEDITOR, 0, io) == -1) {
+		fprintf(stderr, "save_3ds: failed to write 3D editor chunk header\n");
+		return -1;
+	}
+
+	if(write_chunk_dword(CID_MESHVER, CHDR_SIZE + 4, 3, io) == -1) {
+		fprintf(stderr, "save_3ds: failed to write mesh version chunk\n");
+		return -1;
+	}
+
+	num = mf_num_materials(mf);
+	for(i=0; i<num; i++) {
+		if(write_mtl(mf_get_material(mf, i), io) == -1) {
+			fprintf(stderr, "save_3ds: failed to write material\n");
+			return -1;
+		}
+	}
+
+	num = mf_num_nodes(mf);
+	for(i=0; i<num; i++) {
+		node = mf_get_node(mf, i);
+		for(j=0; j<node->num_meshes; j++) {
+			if(write_mesh(node, node->meshes[j], io) == -1) {
+				fprintf(stderr, "save_3ds: failed to write object\n");
+				return -1;
+			}
+		}
+	}
+
+	len = io->seek(io->file, 0, MF_SEEK_CUR) - fpos;
+	io->seek(io->file, fpos + 2, MF_SEEK_SET);
+	if(write_dword(len, io) == -1) {
+		fprintf(stderr, "save_3ds: failed to patch 3D editor chunk size\n");
+		return -1;
+	}
+	io->seek(io->file, len - CHDR_SIZE, MF_SEEK_CUR);
+	return 0;
+}
+
+static int write_mtl(const struct mf_material *mtl, const struct mf_userio *io)
+{
+	int i, res;
+	long fpos;
+	uint32_t len;
+	float sstr, selfillum;
+
+	fpos = io->seek(io->file, 0, MF_SEEK_CUR);
+	res = write_chunkhdr(CID_MATERIAL, 0, io);
+
+	if(mtl->attr[MF_SPECULAR].val.x == 0.0f && mtl->attr[MF_SPECULAR].val.y == 0.0f &&
+			mtl->attr[MF_SPECULAR].val.z == 0.0f) {
+		sstr = 0.0f;
+	} else {
+		sstr = 100.0f;
+	}
+	selfillum = (mtl->attr[MF_EMISSIVE].val.x + mtl->attr[MF_EMISSIVE].val.y +
+		mtl->attr[MF_EMISSIVE].val.z) / 3.0f;
+
+	res |= write_chunk_str(CID_MTL_NAME, 0, mtl->name, io);
+	res |= write_mtlcolor(CID_MTL_AMBIENT, &mtl->attr[MF_COLOR].val.x, io);
+	res |= write_mtlcolor(CID_MTL_DIFFUSE, &mtl->attr[MF_COLOR].val.x, io);
+	res |= write_mtlcolor(CID_MTL_SPECULAR, &mtl->attr[MF_SPECULAR].val.x, io);
+	res |= write_mtlperc(CID_MTL_SHINSTR, sstr, io);
+	if(selfillum > 1e-5) {
+		res |= write_mtlperc(CID_MTL_SELFILLUM, selfillum * 100.0f, io);
+	}
+	if(res != 0) return -1;
+
+	for(i=0; mapmap[i].chunk; i++) {
+		int attrid = mapmap[i].mtlattr;
+		if(mtl->attr[attrid].map.name) {
+			if(write_map(mapmap[i].chunk, &mtl->attr[attrid].map, io) == -1) {
+				return -1;
+			}
+		}
+	}
+
+	len = io->seek(io->file, 0, MF_SEEK_CUR) - fpos;
+	io->seek(io->file, fpos + 2, MF_SEEK_SET);
+	if(write_dword(len, io) == -1) {
+		return -1;
+	}
+	io->seek(io->file, len - CHDR_SIZE, MF_SEEK_CUR);
+	return 0;
+}
+
+static int write_mtlcolor(uint16_t id, const float *col, const struct mf_userio *io)
+{
+	unsigned char rgb[3];
+	if(write_chunkhdr(id, CHDR_SIZE * 2 + 3, io) == -1) {
+		return -1;
+	}
+	if(write_chunkhdr(CID_RGB, CHDR_SIZE + 3, io) == -1) {
+		return -1;
+	}
+
+	rgb[0] = (unsigned char)(col[0] * 255.0f);
+	rgb[1] = (unsigned char)(col[1] * 255.0f);
+	rgb[2] = (unsigned char)(col[2] * 255.0f);
+	if(io->write(io->file, rgb, 3) < 3) {
+		return -1;
+	}
+	return 0;
+}
+
+static int write_mtlperc(uint16_t id, float val, const struct mf_userio *io)
+{
+	if(write_chunkhdr(id, CHDR_SIZE * 2 + 3, io) == -1) {
+		return -1;
+	}
+	if(write_chunkhdr(CID_PERCENT_FLT, CHDR_SIZE + 3, io) == -1) {
+		return -1;
+	}
+
+	val *= 100.0f;
+	CONV_LEFLT(val);
+
+	if(io->write(io->file, &val, sizeof val) < sizeof val) {
+		return -1;
+	}
+	return 0;
+}
+
+static int write_map(uint16_t id, const struct mf_texmap *map, const struct mf_userio *io)
+{
+	uint32_t len;
+	int res;
+
+	len = CHDR_SIZE * 2 + strlen(map->name) + 1 + (CHDR_SIZE + 4) * 5;
+
+	res = write_chunkhdr(id, len, io);
+	res |= write_chunk_str(CID_MAP_FILENAME, 0, map->name, io);
+	res |= write_chunk_flt(CID_MAP_UOFFS, 0, map->offset.x, io);
+	res |= write_chunk_flt(CID_MAP_VOFFS, 0, map->offset.y, io);
+	res |= write_chunk_flt(CID_MAP_USCALE, 0, map->scale.x, io);
+	res |= write_chunk_flt(CID_MAP_VSCALE, 0, map->scale.y, io);
+	res |= write_chunk_flt(CID_MAP_UVROT, 0, map->rot, io);
+	return res == 0 ? 0 : -1;
+}
+
+static int write_mesh(const struct mf_node *node, const struct mf_mesh *mesh, const struct mf_userio *io)
+{
+	unsigned int i;
+	long vertsz, facesz, mtlsz, lcssz, uvsz = 0;
+	uint32_t meshlen, len;
+	const char *mtlname = mesh->mtl->name;
+	mf_vec3 v;
+	struct mf_face *face;
+
+	if(mesh->num_verts >= 65536 || mesh->num_faces >= 65536) {
+		/* TODO split large meshes */
+		printf("save_3ds: ignoring mesh %s, too large for the 3DS format\n", mesh->name);
+		return 0;
+	}
+
+	vertsz = CHDR_SIZE + 2 + mesh->num_verts * 3 * sizeof(float);
+	mtlsz = CHDR_SIZE + strlen(mtlname) + 3 + mesh->num_faces * 2;
+	if(mesh->texcoord) {
+		uvsz = CHDR_SIZE + 2 + mesh->num_verts * 2 * sizeof(float);
+	}
+	lcssz = CHDR_SIZE + 12 * sizeof(float);
+	facesz = CHDR_SIZE + 2 + mesh->num_faces * 8 + mtlsz;
+	meshlen = CHDR_SIZE + vertsz + facesz + mtlsz + lcssz + uvsz;
+	len = CHDR_SIZE + strlen(node->name) + 1 + meshlen;
+
+	if(write_chunk_str(CID_OBJECT, len, node->name, io) == -1) return -1;
+	if(write_chunkhdr(CID_TRIMESH, meshlen, io) == -1) return -1;
+
+	if(write_chunkhdr(CID_VERTLIST, vertsz, io) == -1) return -1;
+	if(write_word(mesh->num_verts, io) == -1) return -1;
+	for(i=0; i<mesh->num_verts; i++) {
+		mf_transform(&v, mesh->vertex + i, node->global_matrix);
+		if(write_vector(v, io) == -1) {
+			return -1;
+		}
+	}
+
+	if(write_chunkhdr(CID_FACEDESC, facesz, io) == -1) return -1;
+	if(write_word(mesh->num_faces, io) == -1) return -1;
+	for(i=0; i<mesh->num_faces; i++) {
+		face = mesh->faces + i;
+		if(write_word(face->vidx[0], io) == -1) return -1;
+		if(write_word(face->vidx[1], io) == -1) return -1;
+		if(write_word(face->vidx[2], io) == -1) return -1;
+		if(write_word(7, io) == -1) return -1;
+	}
+
+	if(write_chunk_str(CID_FACEMTL, mtlsz, mtlname, io) == -1) return -1;
+	if(write_word(mesh->num_faces, io) == -1) return -1;
+	for(i=0; i<mesh->num_faces; i++) {
+		if(write_word(i, io) == -1) return -1;
+	}
+
+	if(mesh->texcoord) {
+		if(write_chunkhdr(CID_UVLIST, uvsz, io) == -1) return -1;
+		if(write_word(mesh->num_verts, io) == -1) return -1;
+		for(i=0; i<mesh->num_verts; i++) {
+			if(write_float(mesh->texcoord[i].x, io) == -1) return -1;
+			if(write_float(mesh->texcoord[i].y, io) == -1) return -1;
+		}
+	}
+
+	if(write_chunkhdr(CID_MESHMATRIX, lcssz, io) == -1) return -1;
+	for(i=0; i<4; i++) {
+		const float *rowptr = node->global_matrix + mrow_offs[i];
+		if(write_float(rowptr[0], io) == -1) return -1;
+		if(write_float(rowptr[2], io) == -1) return -1;
+		if(write_float(rowptr[1], io) == -1) return -1;
+	}
+
+	return 0;
+}
+
+static int write_chunkhdr(uint16_t id, uint32_t sz, const struct mf_userio *io)
+{
+	CONV_LE16(id);
+	CONV_LE32(sz);
+	if(io->write(io->file, &id, sizeof id) < sizeof id) {
+		return -1;
+	}
+	return write_dword(sz, io);
+}
+
+static int write_chunk_dword(uint16_t id, uint32_t sz, uint32_t val, const struct mf_userio *io)
+{
+	if(!sz) sz = CHDR_SIZE + 4;
+	if(write_chunkhdr(id, sz, io) == -1) {
+		return -1;
+	}
+	return write_dword(val, io);
+}
+
+static int write_chunk_flt(uint16_t id, uint32_t sz, float val, const struct mf_userio *io)
+{
+	if(!sz) sz = CHDR_SIZE + 4;
+	if(write_chunkhdr(id, sz, io) == -1) {
+		return -1;
+	}
+	CONV_LEFLT(val);
+	if(io->write(io->file, &val, sizeof val) < sizeof val) {
+		return -1;
+	}
+	return 0;
+}
+
+static int write_chunk_str(uint16_t id, uint32_t sz, const char *str, const struct mf_userio *io)
+{
+	int len = strlen(str) + 1;
+	if(!sz) {
+		sz = CHDR_SIZE + len;
+	}
+	if(write_chunkhdr(id, sz, io) == -1) {
+		return -1;
+	}
+	if(io->write(io->file, str, len) < len) {
+		return -1;
+	}
+	return 0;
+}
+
+static int write_word(uint16_t val, const struct mf_userio *io)
+{
+	CONV_LE16(val);
+	return io->write(io->file, &val, sizeof val) < sizeof val ? -1 : 0;
+}
+
+static int write_dword(uint32_t val, const struct mf_userio *io)
+{
+	CONV_LE32(val);
+	return io->write(io->file, &val, sizeof val) < sizeof val ? -1 : 0;
+}
+
+static int write_float(float val, const struct mf_userio *io)
+{
+	CONV_LEFLT(val);
+	return io->write(io->file, &val, sizeof val) < sizeof val ? -1 : 0;
+}
+
+static int write_vector(mf_vec3 v, const struct mf_userio *io)
+{
+	if(write_float(v.x, io) == -1) return -1;
+	if(write_float(-v.z, io) == -1) return -1;
+	if(write_float(v.y, io) == -1) return -1;
+	return 0;
 }
