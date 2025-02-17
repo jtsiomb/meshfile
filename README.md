@@ -21,7 +21,7 @@ Here's a list of currently supported file formats, and any caveats for each one.
  - Wavefront OBJ
  - JTF (Just Triangle Faces): http://runtimeterror.com/tech/jtf
  - GLTF (OpenGL Transmission Format): currently read-only
- - 3DS (3D Studio): currently read-only
+ - 3DS (3D Studio)
  - STL (Stereolithography): binary only
 
 Using meshfile

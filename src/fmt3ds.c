@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 #include "mfpriv.h"
 #include "dynarr.h"
 #include "util.h"
@@ -729,7 +730,7 @@ static int write_mtl(const struct mf_material *mtl, const struct mf_userio *io)
 			mtl->attr[MF_SPECULAR].val.z == 0.0f) {
 		sstr = 0.0f;
 	} else {
-		sstr = 100.0f;
+		sstr = 1.0f;
 	}
 	selfillum = (mtl->attr[MF_EMISSIVE].val.x + mtl->attr[MF_EMISSIVE].val.y +
 		mtl->attr[MF_EMISSIVE].val.z) / 3.0f;
@@ -738,6 +739,7 @@ static int write_mtl(const struct mf_material *mtl, const struct mf_userio *io)
 	res |= write_mtlcolor(CID_MTL_AMBIENT, &mtl->attr[MF_COLOR].val.x, io);
 	res |= write_mtlcolor(CID_MTL_DIFFUSE, &mtl->attr[MF_COLOR].val.x, io);
 	res |= write_mtlcolor(CID_MTL_SPECULAR, &mtl->attr[MF_SPECULAR].val.x, io);
+	res |= write_mtlperc(CID_MTL_SHININESS, mtl->attr[MF_SHININESS].val.x / 128.0f, io);
 	res |= write_mtlperc(CID_MTL_SHINSTR, sstr, io);
 	if(selfillum > 1e-5) {
 		res |= write_mtlperc(CID_MTL_SELFILLUM, selfillum * 100.0f, io);
@@ -819,8 +821,8 @@ static int write_map(uint16_t id, const struct mf_texmap *map, const struct mf_u
 static int write_mesh(const struct mf_node *node, const struct mf_mesh *mesh, const struct mf_userio *io)
 {
 	unsigned int i;
-	long vertsz, facesz, mtlsz, lcssz, uvsz = 0;
-	uint32_t meshlen, len;
+	long fpos, vertsz, facesz, mtlsz, lcssz, uvsz = 0;
+	uint32_t meshlen, len, len2;
 	const char *mtlname = mesh->mtl->name;
 	mf_vec3 v;
 	struct mf_face *face;
@@ -831,6 +833,8 @@ static int write_mesh(const struct mf_node *node, const struct mf_mesh *mesh, co
 		return 0;
 	}
 
+	fpos = io->seek(io->file, 0, MF_SEEK_CUR);
+
 	vertsz = CHDR_SIZE + 2 + mesh->num_verts * 3 * sizeof(float);
 	mtlsz = CHDR_SIZE + strlen(mtlname) + 3 + mesh->num_faces * 2;
 	if(mesh->texcoord) {
@@ -838,7 +842,7 @@ static int write_mesh(const struct mf_node *node, const struct mf_mesh *mesh, co
 	}
 	lcssz = CHDR_SIZE + 12 * sizeof(float);
 	facesz = CHDR_SIZE + 2 + mesh->num_faces * 8 + mtlsz;
-	meshlen = CHDR_SIZE + vertsz + facesz + mtlsz + lcssz + uvsz;
+	meshlen = CHDR_SIZE + vertsz + facesz + lcssz + uvsz;
 	len = CHDR_SIZE + strlen(node->name) + 1 + meshlen;
 
 	if(write_chunk_str(CID_OBJECT, len, node->name, io) == -1) return -1;
@@ -885,6 +889,9 @@ static int write_mesh(const struct mf_node *node, const struct mf_mesh *mesh, co
 		if(write_float(rowptr[2], io) == -1) return -1;
 		if(write_float(rowptr[1], io) == -1) return -1;
 	}
+
+	len2 = io->seek(io->file, 0, MF_SEEK_CUR) - fpos;
+	assert(len == len2);
 
 	return 0;
 }

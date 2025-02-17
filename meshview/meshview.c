@@ -267,12 +267,14 @@ static int pre_draw(struct mf_mesh *m, int pass)
 	static const float black[] = {0, 0, 0, 1};
 	unsigned int tex;
 	struct mf_material *mtl = m->mtl;
+	float shin;
 
 	switch(pass) {
 	case 0:
 		glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, &mtl->attr[MF_COLOR].val.x);
 		glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &mtl->attr[MF_SPECULAR].val.x);
-		glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, mtl->attr[MF_SHININESS].val.x);
+		shin = mtl->attr[MF_SHININESS].val.x;
+		glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, shin > 128.0f ? 128.0f : shin);
 
 		if(mtl->attr[MF_COLOR].udata && use_tex) {
 			tex = (unsigned int)mtl->attr[MF_COLOR].udata;
