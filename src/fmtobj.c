@@ -280,6 +280,10 @@ static int mesh_done(struct mf_meshfile *mf, struct mf_mesh *mesh)
 		fprintf(stderr, "mf_load: failed to allocate mesh node\n");
 		goto reset_mesh;
 	}
+	if(!(node->name = strdup(mesh->name))) {
+		fprintf(stderr, "load_obj: failed to allocate node name\n");
+		goto reset_mesh;
+	}
 
 	if(mf_node_add_mesh(node, mesh) == -1) {
 		fprintf(stderr, "mf_load: failed to add mesh to node\n");
