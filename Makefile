@@ -10,7 +10,7 @@ liba = libmeshfile.a
 #libso = $(ldname).$(somajor).$(sominor)
 #shared = -shared -Wl,-soname,$(soname)
 
-CFLAGS = $(warn) $(opt) $(dbg) $(pic) -Iinclude $(dep) $(CFLAGS_cfg)
+CFLAGS = $(warn) $(opt) $(dbg) $(pic) -Iinclude $(depgen) $(CFLAGS_cfg)
 LDFLAGS = $(LDFLAGS_cfg)
 
 include config.mk
@@ -23,6 +23,9 @@ $(libso): $(obj)
 
 $(liba): $(obj)
 	$(AR) rcs $@ $(obj)
+
+.c.o:
+	$(CC) -o $@ $(CFLAGS) -c $<
 
 meshview/meshview: meshview/meshview.c $(libso)
 	$(MAKE) -C meshview
@@ -78,25 +81,25 @@ install-all: install install-meshview install-meshconv
 
 .PHONY: meshview
 meshview: $(libso)
-	$(MAKE) -C meshview
+	cd meshview && $(MAKE)
 
 .PHONY: clean-meshview
 clean-meshview: $(libso)
-	$(MAKE) -C meshview clean
+	cd meshview && $(MAKE) clean
 
 .PHONY: install-meshview
 install-meshview: meshview/meshview
-	$(MAKE) -C meshview install
+	cd meshview && $(MAKE) install
 
 
 .PHONY: meshconv
 meshconv: $(libso)
-	$(MAKE) -C meshconv
+	cd meshconv && $(MAKE)
 
 .PHONY: clean-meshconv
 clean-meshconv: $(libso)
-	$(MAKE) -C meshconv clean
+	cd meshconv && $(MAKE) clean
 
 .PHONY: install-meshconv
 install-meshconv: meshconv/meshconv
-	$(MAKE) -C meshconv install
+	cd meshconv && $(MAKE) install
