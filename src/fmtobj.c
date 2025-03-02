@@ -42,6 +42,7 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 	int result = -1;
 	int i, line_num = 0;
 	mf_vec3 *varr = 0, *narr = 0;
+	mf_vec4 *carr = 0;
 	mf_vec2 *tarr = 0;
 	struct rbtree *rbtree = 0;
 	struct mf_mesh *mesh = 0;
@@ -64,7 +65,8 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 
 	if(!(varr = mf_dynarr_alloc(0, sizeof *varr)) ||
 			!(narr = mf_dynarr_alloc(0, sizeof *narr)) ||
-			!(tarr = mf_dynarr_alloc(0, sizeof *tarr))) {
+			!(tarr = mf_dynarr_alloc(0, sizeof *tarr)) ||
+			!(carr = mf_dynarr_alloc(0, sizeof *carr))) {
 		fprintf(stderr, "mf_load: failed to allocate vertex attribute arrays\n");
 		goto end;
 	}
@@ -88,9 +90,11 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 			if(isspace(line[1])) {
 				/* vertex */
 				mf_vec3 v;
+				mf_vec4 col;
 				int num;
 
-				num = sscanf(line + 2, "%f %f %f", &v.x, &v.y, &v.z);
+				num = sscanf(line + 2, "%f %f %f %f %f %f %f", &v.x, &v.y, &v.z,
+						&col.x, &col.y, &col.z, &col.w);
 				if(num < 3) {
 					fprintf(stderr, "%s:%d: invalid vertex definition: \"%s\"\n", mf->name, line_num, line);
 					goto end;
@@ -98,6 +102,18 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 				if(!(varr = mf_dynarr_push(varr, &v))) {
 					fprintf(stderr, "mf_load: failed to resize vertex buffer\n");
 					goto end;
+				}
+				if(num > 3) {
+					/* vertex color "extension" */
+					switch(num) {
+					case 4: col.y = col.x;
+					case 5: col.z = col.x;
+					case 6: col.w = 1.0f;
+					}
+					if(!(carr = mf_dynarr_push(carr, &col))) {
+						fprintf(stderr, "mf_load: failed to resize buffer\n");
+						goto end;
+					}
 				}
 
 			} else if(line[1] == 't' && isspace(line[2])) {
@@ -164,6 +180,14 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 						if(mf_add_vertex(mesh, vptr->x, vptr->y, vptr->z) == -1) {
 							fprintf(stderr, "mf_load: failed to resize vertex array\n");
 							goto end;
+						}
+						if(!mf_dynarr_empty(carr)) {
+							/* vertex color extension */
+							if(mf_add_color(mesh, carr[fv.vidx].x, carr[fv.vidx].y,
+										carr[fv.vidx].z, carr[fv.vidx].w) == -1) {
+								fprintf(stderr, "mf_load: failed to resize color array\n");
+								goto end;
+							}
 						}
 						if(fv.nidx >= 0) {
 							if(mf_add_normal(mesh, narr[fv.nidx].x, narr[fv.nidx].y, narr[fv.nidx].z) == -1) {
@@ -249,6 +273,7 @@ end:
 	mf_dynarr_free(varr);
 	mf_dynarr_free(narr);
 	mf_dynarr_free(tarr);
+	mf_dynarr_free(carr);
 	mf_free_mesh(mesh);
 	rb_free(rbtree);
 	return result;
