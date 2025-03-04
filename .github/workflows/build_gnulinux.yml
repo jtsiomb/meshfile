@@ -1,0 +1,48 @@
+name: GNU/Linux build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build meshfile library
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: install meshview dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install libgl-dev libglu1-mesa-dev libglut-dev libpng-dev libjpeg-dev libxmu-dev
+        git clone https://github.com/jtsiomb/libimago
+        cd libimago
+        ./configure
+        make
+        sudo make install
+
+    - name: configure
+      run: ./configure --enable-opt --prefix=$(pwd)/meshfile-build/meshfile-build
+
+    - name: build
+      run: make
+
+    - name: build meshview
+      run: make meshview
+
+    - name: build meshconv
+      run: make meshconv
+
+    - name: stage install
+      run: |
+        make install-all
+        tree meshfile-build
+
+    - uses: actions/upload-artifact@v4
+      with:
+          name: meshfile-build
+          path: meshfile-build
+
+# vi:ts=2 sts=2 sw=2 expandtab:
