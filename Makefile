@@ -56,18 +56,20 @@ install: $(liba)
 	cp include/meshfile.h $(DESTDIR)$(PREFIX)/include/meshfile.h
 	cp $(liba) $(DESTDIR)$(PREFIX)/$(libdir)/$(liba)
 	cp $(libso) $(DESTDIR)$(PREFIX)/$(libdir)/$(libso)
-	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(soname)
-	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname)
-	ln -s $(libso) $(DESTDIR)$(PREFIX)/$(libdir)/$(soname)
-	ln -s $(soname) $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname)
+	[ -n "$(soname)" ] && \
+		rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(soname) && \
+		rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname) && \
+		ln -s $(libso) $(DESTDIR)$(PREFIX)/$(libdir)/$(soname) && \
+		ln -s $(soname) $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname) || true
 
 .PHONY: uninstall
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/include/meshfile.h
 	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(liba)
 	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(libso)
-	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(soname)
-	rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname)
+	[ -n "$(soname)" ] && \
+		rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(soname) && \
+		rm -f $(DESTDIR)$(PREFIX)/$(libdir)/$(ldname) || true
 
 
 .PHONY: tools

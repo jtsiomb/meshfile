@@ -1,0 +1,55 @@
+name: Windows (mingw) build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        install: |
+          mingw-w64-x86_64-gcc make git mingw-w64-x86_64-freeglut
+          mingw-w64-x86_64-libpng mingw-w64-x86_64-libjpeg-turbo
+
+    - name: install meshview dependencies
+      run: |
+        git clone https://github.com/jtsiomb/libimago
+        cd libimago
+        ./configure
+        make
+        make install
+
+    - name: configure
+      run: ./configure --enable-opt --prefix=$(pwd)/staging/meshfile-mingw64
+
+    - name: build
+      run: make
+
+    - name: build meshview
+      run: |
+        cd meshview
+        make CFLAGS='-I../include -I/usr/local/include' LDFLAGS='-L.. -L/usr/local/lib -lmeshfile -lfreeglut -lopengl32 -lglu32 -limago -lpng -ljpeg'
+
+    - name: build meshconv
+      run: make meshconv
+
+    - name: stage install
+      run: |
+        make install-all
+
+    - uses: actions/upload-artifact@v4
+      with:
+          name: meshfile-mingw64
+          path: staging
+
+# vi:ts=2 sts=2 sw=2 expandtab:

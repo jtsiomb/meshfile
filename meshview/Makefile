@@ -4,8 +4,8 @@ obj = meshview.o
 
 bin = meshview
 
-CFLAGS = $(warn) $(opt) $(dbg) -I../include -I$(PREFIX)/include $(sysincdirs)
-LDFLAGS = -L.. -L$(PREFIX)/$(libdir) -lmeshfile -lglut -lX11 -lXmu -lGL -lGLU -limago -lm
+CFLAGS = $(warn) $(opt) $(dbg) -I../include -I$(PREFIX)/include $(sysincdirs) $(CFLAGS_cfg)
+LDFLAGS = -L.. -L$(PREFIX)/$(libdir) $(LDFLAGS_cfg) -lmeshfile -lglut -lX11 -lXmu -lGL -lGLU -limago -lm
 
 $(bin): $(obj) ../libmeshfile.a
 	$(CC) -o $(bin) $(obj) $(LDFLAGS)
