@@ -1,6 +1,6 @@
 #!/bin/sh
 
-opt=false
+opt=true
 dbg=true
 prefix=/usr/local
 libdir=lib
