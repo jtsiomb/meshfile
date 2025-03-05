@@ -141,7 +141,8 @@ static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 
 static int proc_node(struct node *nodes, int nidx);
 
-static int jarr_to_vec(struct json_arr *jarr, mf_vec4 *vec);
+static int jarr_to_vec4(struct json_arr *jarr, mf_vec4 *vec);
+static int jarr_to_vec3(struct json_arr *jarr, mf_vec3 *vec);
 static int jval_to_vec(struct json_value *jval, mf_vec4 *vec);
 
 static struct {
@@ -776,19 +777,19 @@ static int read_node(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 	} else {
 		/* otherwise see if we have translation/rotation/scaling */
 		if((arr = json_lookup_arr(jnode, "translation", 0))) {
-			if(arr->size != 3 || jarr_to_vec(arr, (mf_vec4*)&pos) == -1) {
+			if(arr->size != 3 || jarr_to_vec3(arr, &pos) == -1) {
 				fprintf(stderr, "load_gltf: node translation invalid\n");
 				goto err;
 			}
 		}
 		if((arr = json_lookup_arr(jnode, "rotation", 0))) {
-			if(arr->size != 4 || jarr_to_vec(arr, &rot) == -1) {
+			if(arr->size != 4 || jarr_to_vec4(arr, &rot) == -1) {
 				fprintf(stderr, "load_gltf: node rotation invalid\n");
 				goto err;
 			}
 		}
 		if((arr = json_lookup_arr(jnode, "scale", 0))) {
-			if(arr->size != 3 || jarr_to_vec(arr, (mf_vec4*)&scale) == -1) {
+			if(arr->size != 3 || jarr_to_vec3(arr, &scale) == -1) {
 				fprintf(stderr, "load_gltf: node scale invalid\n");
 				goto err;
 			}
@@ -1220,7 +1221,7 @@ static int get_texidx(struct gltf_file *gltf, const char *name)
 }
 
 
-static int jarr_to_vec(struct json_arr *jarr, mf_vec4 *vec)
+static int jarr_to_vec4(struct json_arr *jarr, mf_vec4 *vec)
 {
 	int i;
 	float *vptr = &vec->x;
@@ -1242,9 +1243,21 @@ static int jarr_to_vec(struct json_arr *jarr, mf_vec4 *vec)
 	return jarr->size;
 }
 
+static int jarr_to_vec3(struct json_arr *jarr, mf_vec3 *vec)
+{
+	mf_vec4 tmp;
+	if(jarr_to_vec4(jarr, &tmp) == -1) {
+		return -1;
+	}
+	vec->x = tmp.x;
+	vec->y = tmp.y;
+	vec->z = tmp.z;
+	return 0;
+}
+
 static int jval_to_vec(struct json_value *jval, mf_vec4 *vec)
 {
 	if(jval->type != JSON_ARR) return -1;
-	return jarr_to_vec(&jval->arr, vec);
+	return jarr_to_vec4(&jval->arr, vec);
 }
 
