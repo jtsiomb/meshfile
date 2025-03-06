@@ -35,14 +35,19 @@ static char *parse_face_vert(char *ptr, struct facevertex *fv, int numv, int num
 static int cmp_facevert(const void *ap, const void *bp);
 static void free_rbnode_key(struct rbnode *n, void *cls);
 
+struct vertex {
+	float x, y, z, w;
+	float r, g, b, a;
+	int rgba_valid;
+};
 
 int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 {
 	char buf[128];
 	int result = -1;
 	int i, line_num = 0;
-	mf_vec3 *varr = 0, *narr = 0;
-	mf_vec4 *carr = 0;
+	struct vertex *varr = 0;
+	mf_vec3 *narr = 0;
 	mf_vec2 *tarr = 0;
 	struct rbtree *rbtree = 0;
 	struct mf_mesh *mesh = 0;
@@ -58,16 +63,15 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 	}
 
 	if(!(rbtree = rb_create(cmp_facevert))) {
-		fprintf(stderr, "mf_load: failed to create rbtree\n");
+		fprintf(stderr, "load_obj: failed to create rbtree\n");
 		goto end;
 	}
 	rb_set_delete_func(rbtree, free_rbnode_key, 0);
 
 	if(!(varr = mf_dynarr_alloc(0, sizeof *varr)) ||
 			!(narr = mf_dynarr_alloc(0, sizeof *narr)) ||
-			!(tarr = mf_dynarr_alloc(0, sizeof *tarr)) ||
-			!(carr = mf_dynarr_alloc(0, sizeof *carr))) {
-		fprintf(stderr, "mf_load: failed to allocate vertex attribute arrays\n");
+			!(tarr = mf_dynarr_alloc(0, sizeof *tarr))) {
+		fprintf(stderr, "load_obj: failed to allocate vertex attribute arrays\n");
 		goto end;
 	}
 
@@ -75,7 +79,7 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 		goto end;
 	}
 	if(!(mesh->name = strdup(mf->name))) {
-		fprintf(stderr, "mf_load: failed to allocate mesh name\n");
+		fprintf(stderr, "load_obj: failed to allocate mesh name\n");
 		goto end;
 	}
 
@@ -89,31 +93,29 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 		case 'v':
 			if(isspace(line[1])) {
 				/* vertex */
-				mf_vec3 v;
-				mf_vec4 col;
+				struct vertex v;
 				int num;
 
 				num = sscanf(line + 2, "%f %f %f %f %f %f %f", &v.x, &v.y, &v.z,
-						&col.x, &col.y, &col.z, &col.w);
+						&v.w, &v.g, &v.b, &v.a);
 				if(num < 3) {
 					fprintf(stderr, "%s:%d: invalid vertex definition: \"%s\"\n", mf->name, line_num, line);
 					goto end;
 				}
-				if(!(varr = mf_dynarr_push(varr, &v))) {
-					fprintf(stderr, "mf_load: failed to resize vertex buffer\n");
-					goto end;
+				switch(num) {
+				case 6:
+					v.a = 1.0f;
+				case 7:
+					v.r = v.w;
+					v.rgba_valid = 1;
+					break;
+				default:
+					v.rgba_valid = 0;
+					v.r = v.g = v.b = v.a = 1.0f;
 				}
-				if(num > 3) {
-					/* vertex color "extension" */
-					switch(num) {
-					case 4: col.y = col.x;
-					case 5: col.z = col.x;
-					case 6: col.w = 1.0f;
-					}
-					if(!(carr = mf_dynarr_push(carr, &col))) {
-						fprintf(stderr, "mf_load: failed to resize buffer\n");
-						goto end;
-					}
+				if(!(varr = mf_dynarr_push(varr, &v))) {
+					fprintf(stderr, "load_obj: failed to resize vertex buffer\n");
+					goto end;
 				}
 
 			} else if(line[1] == 't' && isspace(line[2])) {
@@ -125,7 +127,7 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 				}
 				tc.y = 1.0f - tc.y;
 				if(!(tarr = mf_dynarr_push(tarr, &tc))) {
-					fprintf(stderr, "mf_load: failed to resize texcoord buffer\n");
+					fprintf(stderr, "load_obj: failed to resize texcoord buffer\n");
 					goto end;
 				}
 
@@ -137,7 +139,7 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 					goto end;
 				}
 				if(!(narr = mf_dynarr_push(narr, &norm))) {
-					fprintf(stderr, "mf_load: failed to resize normal buffer\n");
+					fprintf(stderr, "load_obj: failed to resize normal buffer\n");
 					goto end;
 				}
 			}
@@ -175,29 +177,29 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 					} else {
 						unsigned int newidx = mesh->num_verts;
 						struct facevertex *newfv;
-						mf_vec3 *vptr = varr + fv.vidx;
+						struct vertex *vptr = varr + fv.vidx;
 
 						if(mf_add_vertex(mesh, vptr->x, vptr->y, vptr->z) == -1) {
-							fprintf(stderr, "mf_load: failed to resize vertex array\n");
+							fprintf(stderr, "load_obj: failed to resize vertex array\n");
 							goto end;
 						}
-						if(!mf_dynarr_empty(carr)) {
+						if(vptr->rgba_valid) {
 							/* vertex color extension */
-							if(mf_add_color(mesh, carr[fv.vidx].x, carr[fv.vidx].y,
-										carr[fv.vidx].z, carr[fv.vidx].w) == -1) {
-								fprintf(stderr, "mf_load: failed to resize color array\n");
+							if(mf_add_color(mesh, varr[fv.vidx].r, varr[fv.vidx].g,
+										varr[fv.vidx].b, varr[fv.vidx].a) == -1) {
+								fprintf(stderr, "load_obj: failed to resize color array\n");
 								goto end;
 							}
 						}
 						if(fv.nidx >= 0) {
 							if(mf_add_normal(mesh, narr[fv.nidx].x, narr[fv.nidx].y, narr[fv.nidx].z) == -1) {
-								fprintf(stderr, "mf_load: failed to resize normal array\n");
+								fprintf(stderr, "load_obj: failed to resize normal array\n");
 								goto end;
 							}
 						}
 						if(fv.tidx >= 0) {
 							if(mf_add_texcoord(mesh, tarr[fv.tidx].x, tarr[fv.tidx].y) == -1) {
-								fprintf(stderr, "mf_load: failed to resize texcoord array\n");
+								fprintf(stderr, "load_obj: failed to resize texcoord array\n");
 								goto end;
 							}
 						}
@@ -207,7 +209,7 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 							*newfv = fv;
 						}
 						if(!newfv || rb_insert(rbtree, newfv, (void*)(uintptr_t)newidx) == -1) {
-							fprintf(stderr, "mf_load: failed to insert facevertex to the binary search tree\n");
+							fprintf(stderr, "load_obj: failed to insert facevertex to the binary search tree\n");
 							goto end;
 						}
 					}
@@ -219,7 +221,7 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 					res = mf_add_triangle(mesh, vidx[0], vidx[1], vidx[2]);
 				}
 				if(res == -1) {
-					fprintf(stderr, "mf_load: failed to resize index array\n");
+					fprintf(stderr, "load_obj: failed to resize index array\n");
 					goto end;
 				}
 			}
@@ -228,12 +230,12 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 		case 'o':
 		case 'g':
 			if(mesh_done(mf, mesh) != -1 && !(mesh = mf_alloc_mesh())) {
-				fprintf(stderr, "mf_load: failed to allocate mesh\n");
+				fprintf(stderr, "load_obj: failed to allocate mesh\n");
 				goto end;
 			}
 			mesh->name = clean_line(line + 1);
 			if(!(mesh->name = strdup(mesh->name ? mesh->name : "unnamed mesh"))) {
-				fprintf(stderr, "mf_load: failed to allocate mesh name\n");
+				fprintf(stderr, "load_obj: failed to allocate mesh name\n");
 				goto end;
 			}
 			break;
@@ -242,7 +244,7 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 			if(memcmp(line, "mtllib", 6) == 0) {
 				const char *mtlfile = clean_line(line + 6);
 				if(!mtlfile) {
-					fprintf(stderr, "mf_load: ignoring invalid mtllib\n");
+					fprintf(stderr, "load_obj: ignoring invalid mtllib\n");
 					continue;
 				}
 				mtlfile = mf_find_asset(mf, mtlfile);
@@ -251,7 +253,7 @@ int mf_load_obj(struct mf_meshfile *mf, const struct mf_userio *io)
 					load_mtl(mf, &subio);
 					io->close(subio.file);
 				} else {
-					fprintf(stderr, "mf_load: failed to open material library: %s, ignoring\n", mtlfile);
+					fprintf(stderr, "load_obj: failed to open material library: %s, ignoring\n", mtlfile);
 				}
 
 			} else if(memcmp(line, "usemtl", 6) == 0) {
@@ -273,7 +275,6 @@ end:
 	mf_dynarr_free(varr);
 	mf_dynarr_free(narr);
 	mf_dynarr_free(tarr);
-	mf_dynarr_free(carr);
 	mf_free_mesh(mesh);
 	rb_free(rbtree);
 	return result;
@@ -287,22 +288,33 @@ static int mesh_done(struct mf_meshfile *mf, struct mf_mesh *mesh)
 		return -1;
 	}
 
+	if(mesh->color && mf_dynarr_size(mesh->color) != mf_dynarr_size(mesh->vertex)) {
+		/* we can end up with short color arrays in a mesh if some of its
+		 * vertices didn't have valid vertex colors. We don't support that, so
+		 * we'll just discard the color array altogether.
+		 */
+		mf_dynarr_free(mesh->color);
+		mesh->color = 0;
+		fprintf(stderr, "load_obj: ignoring partial vertex colors in mesh %s\n",
+				mesh->name);
+	}
+
 	if(mesh->normal) {
 		if(mf_dynarr_size(mesh->normal) != mf_dynarr_size(mesh->vertex)) {
-			fprintf(stderr, "mf_load: ignoring mesh with inconsistent attributes\n");
+			fprintf(stderr, "load_obj: ignoring mesh with inconsistent attributes\n");
 			goto reset_mesh;
 		}
 	}
 	if(mesh->texcoord) {
 		if(mf_dynarr_size(mesh->texcoord) != mf_dynarr_size(mesh->vertex)) {
-			fprintf(stderr, "mf_load: ignoring mesh with inconsistent attributes\n");
+			fprintf(stderr, "load_obj: ignoring mesh with inconsistent attributes\n");
 			goto reset_mesh;
 		}
 	}
 
 	/* also allocate a node for it */
 	if(!(node = mf_alloc_node())) {
-		fprintf(stderr, "mf_load: failed to allocate mesh node\n");
+		fprintf(stderr, "load_obj: failed to allocate mesh node\n");
 		goto reset_mesh;
 	}
 	if(!(node->name = strdup(mesh->name))) {
@@ -311,12 +323,12 @@ static int mesh_done(struct mf_meshfile *mf, struct mf_mesh *mesh)
 	}
 
 	if(mf_node_add_mesh(node, mesh) == -1) {
-		fprintf(stderr, "mf_load: failed to add mesh to node\n");
+		fprintf(stderr, "load_obj: failed to add mesh to node\n");
 		goto reset_mesh;
 	}
 
 	if(mf_add_mesh(mf, mesh) == -1) {
-		fprintf(stderr, "mf_load: failed to add mesh\n");
+		fprintf(stderr, "load_obj: failed to add mesh\n");
 		goto reset_mesh;
 	}
 	mf_add_node(mf, node);
