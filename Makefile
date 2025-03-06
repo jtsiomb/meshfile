@@ -86,7 +86,7 @@ meshview: $(libso)
 	cd meshview && $(MAKE)
 
 .PHONY: clean-meshview
-clean-meshview: $(libso)
+clean-meshview:
 	cd meshview && $(MAKE) clean
 
 .PHONY: install-meshview
@@ -99,7 +99,7 @@ meshconv: $(libso)
 	cd meshconv && $(MAKE)
 
 .PHONY: clean-meshconv
-clean-meshconv: $(libso)
+clean-meshconv:
 	cd meshconv && $(MAKE) clean
 
 .PHONY: install-meshconv
