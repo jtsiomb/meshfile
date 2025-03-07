@@ -284,6 +284,17 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 	free(filebuf);
 	filebuf = 0;
 
+	/* a valid gltf file needs to have an "asset" node with a version number */
+	if(!(jval = json_lookup(&root, "asset.version"))) {
+		json_destroy_obj(&root);
+		return -1;
+	}
+
+	/* initialize the dynamic arrays in the gltf structure */
+	if(init_gltf(gltf) == -1) {
+		goto end;
+	}
+
 	if(bin) {
 		/* if it's a binary file, also find and load the binary buffer chunk */
 		while(io->read(io->file, &chunk, 8) == 8) {
@@ -301,17 +312,6 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 			}
 			io->seek(io->file, chunk.len, MF_SEEK_CUR);	/* skip chunk */
 		}
-	}
-
-	/* a valid gltf file needs to have an "asset" node with a version number */
-	if(!(jval = json_lookup(&root, "asset.version"))) {
-		json_destroy_obj(&root);
-		return -1;
-	}
-
-	/* initialize the dynamic arrays in the gltf structure */
-	if(init_gltf(gltf) == -1) {
-		goto end;
 	}
 
 	/* read all the gltf structure things */
