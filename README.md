@@ -17,6 +17,10 @@ reads/writes:
 
 Animations are explicitly outside of the scope of this library.
 
+Meshfile is very simple to use, and comes with two example programs:
+ - meshview: an OpenGL 3D model viewer
+ - meshconv: a converter between any of the supported 3D file formats
+
 File formats
 ------------
 Here's a list of currently supported file formats, and any caveats for each one.
@@ -26,6 +30,20 @@ Here's a list of currently supported file formats, and any caveats for each one.
  - GLTF (OpenGL Transmission Format): currently read-only
  - 3DS (3D Studio)
  - STL (Stereolithography): binary only
+
+Download
+--------
+Project website: http://nuclear.mutantstargoat.com/sw/meshfile
+Github source code repo: https://github.com/jtsiomb/meshfile
+
+You can find all the meshfile releases at the project website, and the github
+releases page:
+ - http://nuclear.mutantstargoat.com/sw/meshfile/releases
+ - https://github.com/jtsiomb/meshfile/releases
+
+You can also obtain the latest source code directly from the git repo:
+`git clone https://github.com/jtsiomb/meshfile.git`
+
 
 Using meshfile
 --------------
