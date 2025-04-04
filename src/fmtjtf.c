@@ -131,8 +131,8 @@ int mf_save_jtf(const struct mf_meshfile *mf, const struct mf_userio *io)
 	struct jtf_face face;
 	struct mf_mesh *mesh;
 	struct mf_face *mff;
-	static const mf_vec3 defnorm = {0, 1, 0};
-	static const mf_vec2 defuv;
+	static mf_vec3 defnorm = {0, 1, 0};
+	static mf_vec2 defuv;
 
 	total_faces = 0;
 	for(i=0; i<(unsigned int)mf_num_meshes(mf); i++) {

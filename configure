@@ -33,13 +33,15 @@ for arg in $*; do
 done
 
 sys=`uname -s | sed 's/MINGW.*/mingw/'`
+arch=`uname -m`
 
 testsrc=/tmp/meshfile_cfg_test.c
 testbin=/tmp/meshfile_cfg_test
 testlog=/tmp/meshfile_cfg_test.log
 
 run_test() {
-	if ! $CC -o $testbin $testsrc >$testlog 2>&1; then
+	$CC -o $testbin $testsrc >$testlog 2>&1
+	if [ $? != 0 ]; then
 		echo "failed to compile test program, see $testlog" >&2
 		exit 1
 	fi
@@ -59,6 +61,9 @@ echo '    return 1;' >>$testsrc
 echo '}' >>$testsrc
 run_test && cc_is_gcc=true || cc_is_gcc=false
 
+# check if CC is MIPSpro
+cc -version 2>&1 | grep MIPSpro >/dev/null && cc_is_mipspro=true || cc_is_mipspro=false
+
 $cc_is_gcc && echo 'compiler is gcc or compatible'
 echo "optimizations: $opt"
 echo "debug symbols: $dbg"
@@ -70,8 +75,14 @@ echo "PREFIX = $prefix" >>$cfgmk
 echo "libdir = $libdir" >>$cfgmk
 echo 'src =' `ls src/*.c | sort` >>$cfgmk
 echo >>$cfgmk
-$opt && echo 'opt = -O3' >>$cfgmk
-$dbg && echo 'dbg = -g' >>$cfgmk
+
+if $cc_is_mipspro; then
+	$opt && echo 'opt = -O2' >>$cfgmk
+	$dbg && echo 'dbg = -g3' >>$cfgmk
+else
+	$opt && echo 'opt = -O3' >>$cfgmk
+	$dbg && echo 'dbg = -g' >>$cfgmk
+fi
 
 if $cc_is_gcc; then
 	echo 'warn = -pedantic -Wall -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast' >>$cfgmk
@@ -96,7 +107,12 @@ else
 	echo 'soname = $(ldname).$(somajor)' >>$cfgmk
 	echo 'libso = $(ldname).$(somajor).$(sominor)' >>$cfgmk
 	echo 'shared = -shared -Wl,-soname,$(soname)' >>$cfgmk
-	echo 'pic = -fPIC' >>$cfgmk
+
+	if $cc_is_mipspro; then
+		echo 'pic = -KPIC' >>$cfgmk
+	else
+		echo 'pic = -fPIC' >>$cfgmk
+	fi
 fi
 
 
