@@ -396,7 +396,7 @@ static const char *facename[] = {
 static int parse_map(struct mf_mtlattr *attr, char *args)
 {
 	int i, cubeface = -1;
-	char *arg, *val, *prev;
+	char *arg, *val, *prev, *str;
 	int bval;
 	float fval;
 	mf_vec3 pos = {0, 0, 0}, scale = {1, 1, 1};
@@ -469,12 +469,23 @@ invalopt:		fprintf(stderr, "ignoring invalid %s option in map: %s\n", arg, val);
 					fprintf(stderr, "failed to allocate map name: %s\n", arg);
 					continue;
 				}
+
+				str = map->name - 1;
+				while(*++str) {
+					if(*str == '\\') *str = '/';
+				}
 			} else {
 				free(map->cube[cubeface]);
 				if(!(map->cube[cubeface] = strdup(arg))) {
 					fprintf(stderr, "failed to allocate cubemap name: %s\n", arg);
 					continue;
 				}
+
+				str = map->cube[cubeface] - 1;
+				while(*++str) {
+					if(*str == '\\') *str = '/';
+				}
+
 				cubeface = -1;
 			}
 		}
