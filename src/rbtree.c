@@ -10,8 +10,8 @@ the terms of the 3-clause BSD license. See COPYING for details.
 #include <string.h>
 #include "rbtree.h"
 
-#define INT2PTR(x)	((void*)(x))
-#define PTR2INT(x)	((int)(x))
+#define INT2PTR(x)	((void*)(unsigned long)(x))
+#define PTR2INT(x)	((int)(unsigned long)(x))
 
 struct rbtree {
 	struct rbnode *root;
