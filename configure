@@ -80,7 +80,11 @@ if $cc_is_mipspro; then
 	$opt && echo 'opt = -O2' >>$cfgmk
 	$dbg && echo 'dbg = -g3' >>$cfgmk
 else
-	$opt && echo 'opt = -O3' >>$cfgmk
+	if $cc_is_gcc; then
+		$opt && echo 'opt = -O3 -fno-strict-aliasing' >>$cfgmk
+	else
+		$opt && echo 'opt = -O3' >>$cfgmk
+	fi
 	$dbg && echo 'dbg = -g' >>$cfgmk
 fi
 

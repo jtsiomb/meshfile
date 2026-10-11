@@ -57,6 +57,11 @@ enum mf_texfilter { MF_TEX_NEAREST, MF_TEX_LINEAR };
 enum mf_texwrap { MF_TEX_REPEAT, MF_TEX_CLAMP };
 enum mf_primitive { MF_TRIANGLES = 3, MF_QUADS = 4 };
 
+struct mf_image_data {
+	void *data;
+	unsigned long size;
+};
+
 struct mf_texmap {
 	char *name;		/* for 2D maps */
 	char *cube[6];	/* for cubemaps */
@@ -64,6 +69,8 @@ struct mf_texmap {
 	enum mf_texwrap uwrap, vwrap;
 	mf_vec3 offset, scale;
 	float rot;
+
+	struct mf_image_data imgdata, cubedata[6];
 };
 
 struct mf_mtlattr {

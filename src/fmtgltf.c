@@ -1,6 +1,6 @@
 /*
 meshfile - a simple C library for reading/writing 3D mesh file formats
-Copyright (C) 2025  John Tsiombikas <nuclear@mutantstargoat.com>
+Copyright (C) 2025-2026  John Tsiombikas <nuclear@mutantstargoat.com>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
@@ -77,6 +77,10 @@ struct accessor {
 
 struct image {
 	char *fname;
+	/* ... or for embedded images */
+	unsigned char *data;
+	unsigned long size;
+	char *filetype;
 };
 
 struct sampler {
@@ -101,6 +105,7 @@ struct chunkhdr {
 };
 
 struct gltf_file {
+	char *basename;
 	int meshcount;
 
 	struct buffer *buffers;
@@ -112,13 +117,16 @@ struct gltf_file {
 	struct node *nodes;
 
 	unsigned char *glbdata;
+	unsigned long glbsize;
 };
 
 static int init_gltf(struct gltf_file *gltf);
 static void destroy_gltf(struct gltf_file *gltf);
 
-static int read_data(struct mf_meshfile *mf, void *buf, unsigned long sz, const char *str,
+static long read_data(struct mf_meshfile *mf, void *buf, unsigned long sz, const char *str,
 		const struct mf_userio *io);
+
+static unsigned char *bufview_data(struct gltf_file *gltf, int bvidx, unsigned long acc_offs);
 
 static int read_image(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jimg,
 		const struct mf_userio *io);
@@ -149,12 +157,12 @@ static struct {
 	const char *arrname;
 	int (*read_thing)(struct mf_meshfile*, struct gltf_file*, struct json_obj*, const struct mf_userio*);
 } gltf_thing[] = {
+	{"buffers", read_buffer},
+	{"bufferViews", read_bufview},
 	{"images", read_image},
 	{"samplers", read_sampler},
 	{"textures", read_texture},
 	{"materials", read_material},
-	{"buffers", read_buffer},
-	{"bufferViews", read_bufview},
 	{"accessors", read_accessor},
 	{"meshes", read_mesh},
 	{"nodes", read_node},
@@ -182,6 +190,11 @@ static int init_gltf(struct gltf_file *gltf)
 static void destroy_gltf(struct gltf_file *gltf)
 {
 	int i;
+	for(i=0; i<mf_dynarr_size(gltf->images); i++) {
+		free(gltf->images[i].fname);
+		free(gltf->images[i].data);
+		free(gltf->images[i].filetype);
+	}
 	mf_dynarr_free(gltf->images);
 	mf_dynarr_free(gltf->samplers);
 	mf_dynarr_free(gltf->textures);
@@ -298,8 +311,8 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 	if(bin) {
 		/* if it's a binary file, also find and load the binary buffer chunk */
 		while(io->read(io->file, &chunk, 8) == 8) {
+			CONV_LE32(chunk.len);
 			if(memcmp(&chunk.type, "BIN", 4) == 0) {
-				CONV_LE32(chunk.len);
 				if(!(gltf->glbdata = malloc(chunk.len))) {
 					fprintf(stderr, "gltf_load: failed to allocate binary chunk data buffer\n");
 					goto end;
@@ -308,6 +321,7 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 					fprintf(stderr, "gltf_load: unexpected EOF while reading binary chunk data\n");
 					goto end;
 				}
+				gltf->glbsize = chunk.len;
 				break;
 			}
 			io->seek(io->file, chunk.len, MF_SEEK_CUR);	/* skip chunk */
@@ -379,7 +393,7 @@ static int proc_node(struct node *nodes, int nidx)
 	return 0;
 }
 
-static int read_data(struct mf_meshfile *mf, void *buf, unsigned long sz, const char *str,
+static long read_data(struct mf_meshfile *mf, void *buf, unsigned long sz, const char *str,
 		const struct mf_userio *io)
 {
 	void *file;
@@ -401,27 +415,114 @@ static int read_data(struct mf_meshfile *mf, void *buf, unsigned long sz, const 
 		}
 		if(io->read(file, buf, sz) != sz) {
 			fprintf(stderr, "load_gltf: unexpected EOF while reading data file: %s\n", str);
+			io->close(file);
 			return -1;
 		}
+		io->close(file);
 	}
-	return 0;
+	return sz;
 }
 
+static struct {
+	const char *mime, *suffix;
+} suffix[] = {
+	{"image/png", ".png"},
+	{"image/jpeg", ".jpg"},
+	{"image/x-portable-pixmap", ".ppm"},
+	{"image/x-portable-graymap", ".pgm"},
+	{"image/x-portable-bitmap", ".pbm"},
+	{"image/x-portable-anymap", ".pnm"},
+	{"image/x-rgb", ".rgb"},
+	{"image/x-xpixmap", ".xpm"},
+	{0, 0}
+};
+
+static const char *mime_suffix(const char *mime)
+{
+	unsigned int i;
+	for(i=0; suffix[i].mime; i++) {
+		if(strcmp(mime, suffix[i].mime) == 0) {
+			return suffix[i].suffix;
+		}
+	}
+	return ".img";
+}
 
 static int read_image(struct mf_meshfile *mf, struct gltf_file *gltf, struct json_obj *jimg,
 		const struct mf_userio *io)
 {
-	struct image img;
-	const char *str;
+	static unsigned int embidx;
+	struct image img = {0};
+	const char *str, *uri, *mime, *suffix;
+	unsigned long bufsz;
+	long sz;
 	void *ptr;
+	int bvidx;
 
-	if(!(str = json_lookup_str(jimg, "uri", 0))) {
-		fprintf(stderr, "load_gltf: image missing or invalid uri\n");
-		return -1;
+	if((uri = json_lookup_str(jimg, "uri", 0))) {
+		if(memcmp(uri, "data:", 5) == 0) {
+			/* expecting base64 data in uri */
+			bufsz = strlen(uri);
+			if(!(img.data = malloc(bufsz))) {
+				fprintf(stderr, "load_gltf: failed to allocate base64 decode buffer\n");
+				return -1;
+			}
+			if((sz = read_data(mf, img.data, bufsz, uri, io)) == -1) {
+				free(img.data);
+				return -1;
+			}
+			img.size = sz;
+
+			mime = uri + 5;
+			if((str = strchr(mime, ';'))) {
+				sz = str - mime;
+				if((img.filetype = malloc(sz + 1))) {
+					memcpy(img.filetype, mime, sz);
+					img.filetype[sz] = 0;
+				}
+			}
+
+		} else {
+			/* standard filename */
+			if(!(img.fname = strdup(uri))) {
+				fprintf(stderr, "load_gltf: failed to dup image name\n");
+				return -1;
+			}
+		}
+
+	} else {
+		/* no uri, expect a bufferView */
+		if((bvidx = json_lookup_int(jimg, "bufferView", -1)) == -1) {
+			fprintf(stderr, "load_gltf: invalid image without uri or bufferView\n");
+			return -1;
+		}
+		if(bvidx < 0 || bvidx >= mf_dynarr_size(gltf->bufviews)) {
+			fprintf(stderr, "load_gltf: image referencing invalid bufferView %d\n", bvidx);
+			return -1;
+		}
+		if(!(ptr = bufview_data(gltf, bvidx, 0))) {
+			fprintf(stderr, "load_gltf: failed to find image bufferView data\n");
+			return -1;
+		}
+
+		img.size = gltf->bufviews[bvidx].len;
+		if(!(img.data = malloc(img.size))) {
+			fprintf(stderr, "load_gltf: failed to allocate image data (%lu bytes)\n", img.size);
+			return -1;
+		}
+		memcpy(img.data, ptr, img.size);
+
+		if((mime = json_lookup_str(jimg, "mimeType", 0))) {
+			img.filetype = strdup(mime);
+		}
 	}
-	if(!(img.fname = strdup(str))) {
-		fprintf(stderr, "load_gltf: failed to dup image name\n");
-		return -1;
+
+	/* embedded images have no filename, generate a hopefully unique one */
+	if(!img.fname) {
+		if((img.fname = malloc(strlen(gltf->basename) + 16))) {
+			suffix = mime_suffix(img.filetype);
+			sprintf(img.fname, "%s-img%03u.%s", gltf->basename, embidx++, suffix);
+		}
 	}
 
 	if(!(ptr = mf_dynarr_push(gltf->images, &img))) {
@@ -506,6 +607,11 @@ static int get_texture(struct gltf_file *gltf, struct mf_texmap *tex, const char
 	gtex = gltf->textures + val;
 	sam = gtex->sampleridx >= 0 ? gltf->samplers + gtex->sampleridx : &defsam;
 	img = gltf->images + gtex->imgidx;
+
+	/* handle embedded image data */
+	if(img->data) {
+		/* TODO */
+	}
 
 	if(!(tex->name = strdup(img->fname))) {
 		fprintf(stderr, "load_gltf: failed to allocate texture name\n");
@@ -839,6 +945,22 @@ static struct accessor *find_accessor(struct gltf_file *gltf, struct json_obj *j
 	return gltf->accessors + idx;
 }
 
+static unsigned char *bufview_data(struct gltf_file *gltf, int bvidx, unsigned long acc_offs)
+{
+	unsigned char *data;
+	struct bufview *bview;
+	struct buffer *buf;
+
+	bview = gltf->bufviews + bvidx;
+	buf = gltf->buffers + bview->bufidx;
+
+	if(buf->data) {
+		data = buf->data + bview->offs + acc_offs;
+	} else {
+		data = gltf->glbdata + bview->offs + acc_offs;
+	}
+	return data;
+}
 
 enum { POSITION, NORMAL, TANGENT, TEXCOORD_0, COLOR_0, FACEIDX };
 
@@ -847,20 +969,11 @@ static int read_mesh_attr(struct mf_mesh *mesh, struct gltf_file *gltf, struct a
 	int j, curidx = 0;
 	long i;
 	unsigned char *src;
-	struct bufview *bview;
-	struct buffer *buf;
 	float vec[4] = {0, 0, 0, 1};
 	unsigned int vidx[3];
 	unsigned short sval;
 
-	bview = gltf->bufviews + acc->bvidx;
-	buf = gltf->buffers + bview->bufidx;
-
-	if(buf->data) {
-		src = buf->data + bview->offs + acc->offs;
-	} else {
-		src = gltf->glbdata + bview->offs + acc->offs;
-	}
+	src = bufview_data(gltf, acc->bvidx, acc->offs);
 
 	for(i=0; i<acc->count; i++) {
 		switch(acc->type) {
