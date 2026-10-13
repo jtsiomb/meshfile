@@ -116,6 +116,7 @@ static int init(void)
 	for(i=0; i<mf_num_materials(mf); i++) {
 		mtl = mf_get_material(mf, i);
 		mtl_init_texture(mtl, MF_COLOR);
+		mtl_init_texture(mtl, MF_EMISSIVE);
 		mtl_init_texture(mtl, MF_REFLECT);
 
 		if(dumptex) {
@@ -154,6 +155,7 @@ static void render_node_tree(struct mf_node *n)
 		while(pre_draw(n->meshes[i], pass++)) {
 			draw_mesh(n->meshes[i]);
 		}
+		pre_draw(n->meshes[i], -1);	/* restore state */
 	}
 
 	for(i=0; i<n->num_child; i++) {
@@ -268,16 +270,32 @@ static void draw_mesh(struct mf_mesh *m)
 
 static int pre_draw(struct mf_mesh *m, int pass)
 {
-	static const float white[] = {1, 1, 1, 1};
-	static const float black[] = {0, 0, 0, 1};
+	static float black[4];
 	unsigned int tex;
 	struct mf_material *mtl = m->mtl;
 	float shin;
+
+	if(pass <= 0) {
+		/* restore state */
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+		glDisable(GL_TEXTURE_GEN_S);
+		glDisable(GL_TEXTURE_GEN_T);
+		glDepthFunc(GL_LESS);
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, black);
+	} else {
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_ONE, GL_ONE);
+		glDepthFunc(GL_LEQUAL);
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+	}
 
 	switch(pass) {
 	case 0:
 		glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, &mtl->attr[MF_COLOR].val.x);
 		glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &mtl->attr[MF_SPECULAR].val.x);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, &mtl->attr[MF_EMISSIVE].val.x);
 		shin = mtl->attr[MF_SHININESS].val.x;
 		glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, shin > 128.0f ? 128.0f : shin);
 
@@ -287,22 +305,23 @@ static int pre_draw(struct mf_mesh *m, int pass)
 			glBindTexture(GL_TEXTURE_2D, tex);
 
 			if(!tex_modulate) {
-				glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, white);
+				glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
 			}
 		}
 		return 1;
 
 	case 1:
+		if(!use_tex) break;
+
+		if(mtl->attr[MF_EMISSIVE].udata && use_tex) {
+			/* emissive texture */
+			glEnable(GL_TEXTURE_2D);
+			tex = (unsigned int)mtl->attr[MF_EMISSIVE].udata;
+			glBindTexture(GL_TEXTURE_2D, tex);
+			return 1;
+		}
 		if(mtl->attr[MF_REFLECT].udata && use_tex) {
 			/* envmap pass */
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_ONE, GL_ONE);
-			glDepthFunc(GL_LEQUAL);
-
-			glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, black);
-			glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, black);
-			glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, white);
-
 			tex = (unsigned int)mtl->attr[MF_REFLECT].udata;
 			glEnable(GL_TEXTURE_2D);
 			glEnable(GL_TEXTURE_GEN_S);
@@ -312,16 +331,6 @@ static int pre_draw(struct mf_mesh *m, int pass)
 			glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
 			return 1;
 		}
-		glDisable(GL_TEXTURE_2D);
-		break;
-
-	case 2:
-		glDisable(GL_BLEND);
-		glDisable(GL_TEXTURE_2D);
-		glDisable(GL_TEXTURE_GEN_S);
-		glDisable(GL_TEXTURE_GEN_T);
-		glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, black);
-		glDepthFunc(GL_LESS);
 		break;
 
 	default:
