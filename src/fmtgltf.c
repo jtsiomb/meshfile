@@ -191,8 +191,6 @@ static void destroy_gltf(struct gltf_file *gltf)
 {
 	int i;
 	for(i=0; i<mf_dynarr_size(gltf->images); i++) {
-		free(gltf->images[i].fname);
-		free(gltf->images[i].data);
 		free(gltf->images[i].filetype);
 	}
 	mf_dynarr_free(gltf->images);
@@ -210,6 +208,7 @@ static void destroy_gltf(struct gltf_file *gltf)
 	}
 	mf_dynarr_free(gltf->nodes);
 	free(gltf->glbdata);
+	free(gltf->basename);
 }
 
 int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
@@ -306,6 +305,11 @@ int mf_load_gltf(struct mf_meshfile *mf, const struct mf_userio *io)
 	/* initialize the dynamic arrays in the gltf structure */
 	if(init_gltf(gltf) == -1) {
 		goto end;
+	}
+
+	if(mf->name && (gltf->basename = strdup(mf->name))) {
+		char *suffix = strrchr(gltf->basename, '.');
+		if(suffix) *suffix = 0;
 	}
 
 	if(bin) {
@@ -458,6 +462,7 @@ static int read_image(struct mf_meshfile *mf, struct gltf_file *gltf, struct jso
 	long sz;
 	void *ptr;
 	int bvidx;
+	struct mf_image_data *imgdata;
 
 	if((uri = json_lookup_str(jimg, "uri", 0))) {
 		if(memcmp(uri, "data:", 5) == 0) {
@@ -519,9 +524,23 @@ static int read_image(struct mf_meshfile *mf, struct gltf_file *gltf, struct jso
 
 	/* embedded images have no filename, generate a hopefully unique one */
 	if(!img.fname) {
-		if((img.fname = malloc(strlen(gltf->basename) + 16))) {
+		if((img.fname = malloc(gltf->basename ? strlen(gltf->basename) + 16 : 16))) {
 			suffix = mime_suffix(img.filetype);
-			sprintf(img.fname, "%s-img%03u.%s", gltf->basename, embidx++, suffix);
+			if(gltf->basename) {
+				sprintf(img.fname, "%s-img%03u%s", gltf->basename, embidx++, suffix);
+			} else {
+				sprintf(img.fname, "img%03u%s", embidx++, suffix);
+			}
+			printf("assign name to internal texture: %s\n", img.fname);
+		}
+
+		if(!(imgdata = malloc(sizeof *imgdata))) {
+			fprintf(stderr, "load_gltf: failed to allocate image data\n");
+		} else {
+			imgdata->name = strdup(img.fname);
+			imgdata->data = img.data;
+			imgdata->size = img.size;
+			mf_add_imgdata(mf, imgdata);
 		}
 	}
 
@@ -579,10 +598,11 @@ static int read_texture(struct mf_meshfile *mf, struct gltf_file *gltf, struct j
 	return 0;
 }
 
-static int get_texture(struct gltf_file *gltf, struct mf_texmap *tex, const char *basepath, struct json_obj *jmtl)
+static int get_texture(struct mf_meshfile *mf, struct gltf_file *gltf,
+		struct mf_texmap *tex, const char *basepath, struct json_obj *jmtl)
 {
 	static struct sampler defsam = {GLTF_LINEAR, GLTF_LINEAR_MIPMAP_LINEAR, GLTF_REPEAT, GLTF_REPEAT};
-	int val;
+	int i, val;
 	struct texture *gtex;
 	struct image *img;
 	struct sampler *sam;
@@ -610,7 +630,12 @@ static int get_texture(struct gltf_file *gltf, struct mf_texmap *tex, const char
 
 	/* handle embedded image data */
 	if(img->data) {
-		/* TODO */
+		for(i=0; i<mf_dynarr_size(mf->imgdata); i++) {
+			if(mf->imgdata[i]->data == img->data) {
+				tex->imgdata = mf->imgdata[i];
+				break;
+			}
+		}
 	}
 
 	if(!(tex->name = strdup(img->fname))) {
@@ -707,7 +732,7 @@ static int read_material(struct mf_meshfile *mf, struct gltf_file *gltf, struct 
 
 	for(i=0; i<MF_NUM_MTLATTR; i++) {
 		if(texpaths[i]) {
-			get_texture(gltf, &mtl->attr[i].map, texpaths[i], jmtl);
+			get_texture(mf, gltf, &mtl->attr[i].map, texpaths[i], jmtl);
 		}
 	}
 

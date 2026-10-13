@@ -58,6 +58,7 @@ enum mf_texwrap { MF_TEX_REPEAT, MF_TEX_CLAMP };
 enum mf_primitive { MF_TRIANGLES = 3, MF_QUADS = 4 };
 
 struct mf_image_data {
+	char *name;
 	void *data;
 	unsigned long size;
 };
@@ -70,7 +71,7 @@ struct mf_texmap {
 	mf_vec3 offset, scale;
 	float rot;
 
-	struct mf_image_data imgdata, cubedata[6];
+	struct mf_image_data *imgdata, *cubedata[6];
 };
 
 struct mf_mtlattr {
@@ -173,25 +174,34 @@ void mf_free_node(struct mf_node *node);
 int mf_init_node(struct mf_node *node);
 void mf_destroy_node(struct mf_node *node);
 
+struct mf_image_data *mf_alloc_imgdata(void);
+void mf_free_imgdata(struct mf_image_data *idat);
+int mf_init_imgdata(struct mf_image_data *idat);
+void mf_destroy_imgdata(struct mf_image_data *idat);
+
 const char *mf_get_name(const struct mf_meshfile *mf);
 
 unsigned int mf_num_meshes(const struct mf_meshfile *mf);
 unsigned int mf_num_materials(const struct mf_meshfile *mf);
 unsigned int mf_num_nodes(const struct mf_meshfile *mf);
 unsigned int mf_num_topnodes(const struct mf_meshfile *mf);
+unsigned int mf_num_imgdata(const struct mf_meshfile *mf);
 
 struct mf_mesh *mf_get_mesh(const struct mf_meshfile *mf, int idx);
 struct mf_material *mf_get_material(const struct mf_meshfile *mf, int idx);
 struct mf_node *mf_get_node(const struct mf_meshfile *mf, int idx);
 struct mf_node *mf_get_topnode(const struct mf_meshfile *mf, int idx);
+struct mf_image_data *mf_get_imgdata(const struct mf_meshfile *mf, int idx);
 
 struct mf_mesh *mf_find_mesh(const struct mf_meshfile *mf, const char *name);
 struct mf_material *mf_find_material(const struct mf_meshfile *mf, const char *name);
 struct mf_node *mf_find_node(const struct mf_meshfile *mf, const char *name);
+struct mf_image_data *mf_find_imgdata(const struct mf_meshfile *mf, const char *name);
 
 int mf_add_mesh(struct mf_meshfile *mf, struct mf_mesh *m);
 int mf_add_material(struct mf_meshfile *mf, struct mf_material *mtl);
 int mf_add_node(struct mf_meshfile *mf, struct mf_node *n);
+int mf_add_imgdata(struct mf_meshfile *mf, struct mf_image_data *img);
 
 int mf_bounds(const struct mf_meshfile *mf, mf_aabox *bb);
 void mf_update_xform(struct mf_meshfile *mf);

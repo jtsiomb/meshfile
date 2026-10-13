@@ -15,6 +15,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdarg.h>
+#include <errno.h>
 #include <assert.h>
 #include <GL/glut.h>
 #include "imago2.h"
@@ -34,7 +35,9 @@ static void keypress(unsigned char key, int x, int y);
 static void skeypress(int key, int x, int y);
 static void mouse(int bn, int st, int x, int y);
 static void motion(int x, int y);
-static unsigned int load_texture(const char *fname);
+static int mtl_init_texture(struct mf_material *mtl, enum mf_mtlattr_type attr);
+static unsigned int load_texture(const char *fname, struct mf_image_data *data);
+static int dump_image_data(struct mf_image_data *img);
 static void glprintf(int x, int y, const char *fmt, ...);
 static int parse_args(int argc, char **argv);
 
@@ -45,10 +48,12 @@ static float cam_pos[3];
 static float znear = 0.5, zfar = 500.0;
 static int mouse_x, mouse_y;
 static int bnstate[8];
+static float zoom_speed = 10.0f;
 static int wire, zup, use_tex = 1;
 static int use_nodes = 1;
 static int show_bounds;
 static int tex_modulate;
+static int dumptex;
 static struct mf_meshfile *mf;
 
 static long total_faces;
@@ -84,9 +89,11 @@ int main(int argc, char **argv)
 
 static int init(void)
 {
-	int i;
+	int i, j;
 	struct mf_material *mtl;
-	const char *map;
+	static const char *attrstr[] = {"color", "specular", "shininess", "roughness",
+		"metallic", "emissive", "reflect", "transmit", "ior", "alpha", "bump"
+	};
 
 	if(!fname) {
 		fprintf(stderr, "pass mesh file to open\n");
@@ -108,18 +115,16 @@ static int init(void)
 	/* load any textures */
 	for(i=0; i<mf_num_materials(mf); i++) {
 		mtl = mf_get_material(mf, i);
-		if((map = mf_find_asset(mf, mtl->attr[MF_COLOR].map.name))) {
-			if(!(mtl->attr[MF_COLOR].udata = (void*)load_texture(map))) {
-				fprintf(stderr, "failed to load texture: %s\n", map);
-			} else {
-				printf("loaded texture: %s\n", map);
-			}
-		}
-		if((map = mf_find_asset(mf, mtl->attr[MF_REFLECT].map.name))) {
-			if(!(mtl->attr[MF_REFLECT].udata = (void*)load_texture(map))) {
-				fprintf(stderr, "failed to load envmap: %s\n", map);
-			} else {
-				printf("loaded envmap: %s\n", map);
+		mtl_init_texture(mtl, MF_COLOR);
+		mtl_init_texture(mtl, MF_REFLECT);
+
+		if(dumptex) {
+			for(j=0; j<MF_NUM_MTLATTR; j++) {
+				if(mtl->attr[j].map.imgdata) {
+					printf("dumping %s texture: %s\n", attrstr[j],
+							mtl->attr[j].map.imgdata->name);
+					dump_image_data(mtl->attr[j].map.imgdata);
+				}
 			}
 		}
 	}
@@ -471,6 +476,16 @@ static void keypress(unsigned char key, int x, int y)
 		glutPostRedisplay();
 		break;
 
+	case '=':
+		zoom_speed *= 1.25;
+		break;
+	case '-':
+		zoom_speed *= 0.75;
+		break;
+	case '0':
+		zoom_speed = 10.0f;
+		break;
+
 	default:
 		break;
 	}
@@ -509,9 +524,9 @@ static void mouse(int bn, int st, int x, int y)
 
 	if(press) {
 		if(bidx == 3) {
-			zoom(-10);
+			zoom(-zoom_speed);
 		} else if(bidx == 4) {
-			zoom(10);
+			zoom(zoom_speed);
 		}
 	}
 }
@@ -553,17 +568,49 @@ static void motion(int x, int y)
 		glutPostRedisplay();
 	}
 	if(bnstate[2]) {
-		zoom(dy);
+		zoom(dy * zoom_speed / 10);
 	}
 }
 
-static unsigned int load_texture(const char *fname)
+int mtl_init_texture(struct mf_material *mtl, enum mf_mtlattr_type attr)
+{
+	const char *path;
+	struct mf_texmap *tex = &mtl->attr[attr].map;
+
+	if(tex->imgdata) {
+		if(!(mtl->attr[attr].udata = (void*)load_texture(0, tex->imgdata))) {
+			fprintf(stderr, "failed to decode embedded texture: %s\n", tex->imgdata->name);
+			return -1;
+		}
+		printf("embedded texture: %s\n", tex->imgdata->name);
+		return 0;
+	}
+
+	if((path = mf_find_asset(mf, tex->name))) {
+		if(!(mtl->attr[attr].udata = (void*)load_texture(path, 0))) {
+			fprintf(stderr, "failed to load texture: %s\n", path);
+			return -1;
+		}
+		printf("loaded texture: %s\n", path);
+	}
+	return 0;
+}
+
+static unsigned int load_texture(const char *fname, struct mf_image_data *data)
 {
 	int width, height;
 	unsigned int tex;
 	void *pixels;
 
-	if(!(pixels = img_load_pixels(fname, &width, &height, IMG_FMT_RGBA32))) {
+	if(fname) {
+		if(!(pixels = img_load_pixels(fname, &width, &height, IMG_FMT_RGBA32))) {
+			return 0;
+		}
+	} else if(data && data->data && data->size > 0) {
+		if(!(pixels = img_load_pixels_mem(data->data, data->size, &width, &height, IMG_FMT_RGBA32))) {
+			return 0;
+		}
+	} else {
 		return 0;
 	}
 
@@ -575,6 +622,21 @@ static unsigned int load_texture(const char *fname)
 
 	img_free_pixels(pixels);
 	return tex;
+}
+
+static int dump_image_data(struct mf_image_data *img)
+{
+	FILE *fp;
+
+	if(!img) return -1;
+
+	if(!(fp = fopen(img->name, "wb"))) {
+		fprintf(stderr, "dump_image_data: failed to open %s: %s\n", img->name, strerror(errno));
+		return -1;
+	}
+	fwrite(img->data, 1, img->size, fp);
+	fclose(fp);
+	return 0;
 }
 
 static int text_width(const char *s)
@@ -630,11 +692,14 @@ static int parse_args(int argc, char **argv)
 	int i;
 	static const char *usage_fmt = "Usage: %s [options] <mesh file>\n"
 		"Options:\n"
+		" -dumptex: dump embedded textures, if any\n"
 		" -h,-help: print usage and exit\n";
 
 	for(i=1; i<argc; i++) {
 		if(argv[i][0] == '-') {
-			if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-help") == 0) {
+			if(strcmp(argv[i], "-dumptex") == 0) {
+				dumptex = 1;
+			} else if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-help") == 0) {
 				printf(usage_fmt, argv[0]);
 				exit(0);
 			} else {

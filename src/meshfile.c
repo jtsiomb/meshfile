@@ -114,6 +114,9 @@ int mf_init(struct mf_meshfile *mf)
 	if(!(mf->topnodes = mf_dynarr_alloc(0, sizeof *mf->topnodes))) {
 		goto err;
 	}
+	if(!(mf->imgdata = mf_dynarr_alloc(0, sizeof *mf->imgdata))) {
+		goto err;
+	}
 
 	if(!(mf->assetpath = rb_create(RB_KEY_STRING))) {
 		goto err;
@@ -128,6 +131,7 @@ err:
 	mf_dynarr_free(mf->mtl); mf->mtl = 0;
 	mf_dynarr_free(mf->nodes); mf->nodes = 0;
 	mf_dynarr_free(mf->topnodes); mf->topnodes = 0;
+	mf_dynarr_free(mf->imgdata); mf->imgdata = 0;
 	return -1;
 }
 
@@ -138,6 +142,7 @@ void mf_destroy(struct mf_meshfile *mf)
 	mf_dynarr_free(mf->mtl);
 	mf_dynarr_free(mf->nodes);
 	mf_dynarr_free(mf->topnodes);
+	mf_dynarr_free(mf->imgdata);
 	free(mf->name);
 	free(mf->dirname);
 	rb_free(mf->assetpath);
@@ -162,6 +167,11 @@ void mf_clear(struct mf_meshfile *mf)
 	}
 	mf->nodes = mf_dynarr_clear(mf->nodes);
 	mf->topnodes = mf_dynarr_clear(mf->topnodes);
+
+	for(i=0; i<mf_dynarr_size(mf->imgdata); i++) {
+		mf_free_imgdata(mf->imgdata[i]);
+	}
+	mf->imgdata = mf_dynarr_clear(mf->imgdata);
 
 	rb_clear(mf->assetpath);
 }
@@ -290,6 +300,39 @@ void mf_destroy_node(struct mf_node *node)
 	mf_dynarr_free(node->meshes);
 }
 
+struct mf_image_data *mf_alloc_imgdata(void)
+{
+	struct mf_image_data *idat;
+	if(!(idat = malloc(sizeof *idat))) {
+		return 0;
+	}
+	if(mf_init_imgdata(idat) == -1) {
+		free(idat);
+		return 0;
+	}
+	return idat;
+}
+
+void mf_free_imgdata(struct mf_image_data *idat)
+{
+	mf_destroy_imgdata(idat);
+	free(idat);
+}
+
+int mf_init_imgdata(struct mf_image_data *idat)
+{
+	memset(idat, 0, sizeof *idat);
+	return 0;
+}
+
+void mf_destroy_imgdata(struct mf_image_data *idat)
+{
+	if(!idat) return;
+	free(idat->name);
+	free(idat->data);
+}
+
+
 const char *mf_get_name(const struct mf_meshfile *mf)
 {
 	return mf->name;
@@ -308,6 +351,11 @@ unsigned int mf_num_materials(const struct mf_meshfile *mf)
 unsigned int mf_num_nodes(const struct mf_meshfile *mf)
 {
 	return mf_dynarr_size(mf->nodes);
+}
+
+unsigned int mf_num_imgdata(const struct mf_meshfile *mf)
+{
+	return mf_dynarr_size(mf->imgdata);
 }
 
 unsigned int mf_num_topnodes(const struct mf_meshfile *mf)
@@ -333,6 +381,11 @@ struct mf_node *mf_get_node(const struct mf_meshfile *mf, int idx)
 struct mf_node *mf_get_topnode(const struct mf_meshfile *mf, int idx)
 {
 	return mf->topnodes[idx];
+}
+
+struct mf_image_data *mf_get_imgdata(const struct mf_meshfile *mf, int idx)
+{
+	return mf->imgdata[idx];
 }
 
 struct mf_mesh *mf_find_mesh(const struct mf_meshfile *mf, const char *name)
@@ -363,6 +416,17 @@ struct mf_node *mf_find_node(const struct mf_meshfile *mf, const char *name)
 	for(i=0; i<num; i++) {
 		if(strcmp(mf->nodes[i]->name, name) == 0) {
 			return mf->nodes[i];
+		}
+	}
+	return 0;
+}
+
+struct mf_image_data *mf_find_imgdata(const struct mf_meshfile *mf, const char *name)
+{
+	int i, num = mf_dynarr_size(mf->imgdata);
+	for(i=0; i<num; i++) {
+		if(strcmp(mf->imgdata[i]->name, name) == 0) {
+			return mf->imgdata[i];
 		}
 	}
 	return 0;
@@ -412,6 +476,18 @@ int mf_add_node(struct mf_meshfile *mf, struct mf_node *n)
 		}
 		mf->topnodes = tmp;
 	}
+	return 0;
+}
+
+int mf_add_imgdata(struct mf_meshfile *mf, struct mf_image_data *imgdata)
+{
+	void *tmp;
+
+	if(!(tmp = mf_dynarr_push(mf->imgdata, &imgdata))) {
+		return -1;
+	}
+	mf->imgdata = tmp;
+
 	return 0;
 }
 

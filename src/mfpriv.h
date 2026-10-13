@@ -51,6 +51,8 @@ struct mf_meshfile {
 	struct mf_node **nodes, **topnodes;
 	mf_aabox aabox;
 
+	struct mf_image_data **imgdata;
+
 	struct rbtree *assetpath;
 	unsigned int flags;
 };
