@@ -591,7 +591,9 @@ int mtl_init_texture(struct mf_material *mtl, enum mf_mtlattr_type attr)
 			fprintf(stderr, "failed to decode embedded texture: %s\n", tex->imgdata->name);
 			return -1;
 		}
-		printf("embedded texture: %s\n", tex->imgdata->name);
+		if(!dumptex) {
+			printf("embedded texture: %s\n", tex->imgdata->name);
+		}
 		return 0;
 	}
 
