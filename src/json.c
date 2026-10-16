@@ -339,9 +339,12 @@ static int next_char(struct parser *p)
 {
 	while(*p->text) {
 		p->nextc = *p->text++;
-		if(!isspace(p->nextc)) break;
+		if(!isspace((unsigned char)p->nextc)) {
+			return p->nextc;
+		}
 	}
-	return p->nextc;
+	p->nextc = 0;
+	return 0;
 }
 
 #define SET_TOKEN(token, str, len) \
@@ -354,7 +357,7 @@ static int next_char(struct parser *p)
 static int next_token(struct parser *p)
 {
 	int len;
-	char *ptr, *s;
+	char *ptr, *s, c;
 
 	if(!p->nextc) return -1;
 
@@ -371,10 +374,9 @@ static int next_token(struct parser *p)
 
 	case '"':
 		DYNARR_CLEAR(p->token);
-		next_char(p);
-		while(p->nextc && p->nextc != '"') {
-			DYNARR_STRPUSH(p->token, p->nextc);
-			next_char(p);
+		DYNARR_PUSH(p->token, "");
+		while(*p->text && (c = *p->text++) != '"') {
+			DYNARR_STRPUSH(p->token, c);
 		}
 		next_char(p);
 		return TOKEN_STR;
@@ -528,7 +530,7 @@ static int object(struct parser *p, struct json_obj *obj)
 
 	json_init_obj(obj);
 
-	while(p->nextc != -1 && p->nextc != '}') {
+	while(p->nextc > 0 && p->nextc != '}') {
 		if(item(p, &it) == -1) {
 			fprintf(stderr, "json_parse: expected item in object\n");
 			json_destroy_obj(obj);
@@ -552,6 +554,8 @@ int json_parse(struct json_obj *root, const char *text)
 	struct parser p;
 
 	if(!text || !*text) return -1;
+
+	while(isspace((unsigned char)*text)) text++;
 
 	p.nextc = *text;
 	p.text = (char*)(text + 1);
