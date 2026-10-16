@@ -62,7 +62,7 @@ echo '}' >>$testsrc
 run_test && cc_is_gcc=true || cc_is_gcc=false
 
 # check if CC is MIPSpro
-cc -version 2>&1 | grep MIPSpro >/dev/null && cc_is_mipspro=true || cc_is_mipspro=false
+$CC -version 2>&1 | grep MIPSpro >/dev/null && cc_is_mipspro=true || cc_is_mipspro=false
 
 $cc_is_gcc && echo 'compiler is gcc or compatible'
 echo "optimizations: $opt"
