@@ -62,7 +62,7 @@ static long io_seek(void *file, long offs, int from);
 static struct mf_material defmtl = {
 	"default material",
 	{
-		{MF_COLOR, {0.7, 0.7, 0.7, 0.7}, DEFMAP},
+		{MF_COLOR, {0.7, 0.7, 0.7, 1.0}, DEFMAP},
 		{MF_SPECULAR, {0}, DEFMAP},
 		{MF_SHININESS, {1}, DEFMAP},
 		{MF_ROUGHNESS, {1, 1, 1, 1}, DEFMAP},
@@ -70,7 +70,7 @@ static struct mf_material defmtl = {
 		{MF_EMISSIVE, {0}, DEFMAP},
 		{MF_REFLECT, {0}, DEFMAP},
 		{MF_TRANSMIT, {0}, DEFMAP},
-		{MF_IOR, {1}, DEFMAP},
+		{MF_IOR, {1.5}, DEFMAP},
 		{MF_ALPHA, {1, 1, 1, 1}, DEFMAP},
 		{MF_BUMP, {0}, DEFMAP}
 	}

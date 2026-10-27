@@ -149,6 +149,8 @@ static int read_mesh(struct mf_meshfile *mf, struct gltf_file *gltf, struct json
 
 static int proc_node(struct node *nodes, int nidx);
 
+static mf_vec3 vec3(float x, float y, float z);
+static mf_vec4 vec4(float x, float y, float z, float w);
 static int jarr_to_vec4(struct json_arr *jarr, mf_vec4 *vec);
 static int jarr_to_vec3(struct json_arr *jarr, mf_vec3 *vec);
 static int jval_to_vec(struct json_value *jval, mf_vec4 *vec);
@@ -709,23 +711,25 @@ static int read_material(struct mf_meshfile *mf, struct gltf_file *gltf, struct 
 
 	if((jval = json_lookup(jmtl, "pbrMetallicRoughness.baseColorFactor"))) {
 		jval_to_vec(jval, &mtl->attr[MF_COLOR].val);
+	} else {
+		mtl->attr[MF_COLOR].val = vec4(1, 1, 1, 1);
 	}
 	if((val = json_lookup_num(jmtl, "pbrMetallicRoughness.roughnessFactor", -1.0)) >= 0) {
 		mtl->attr[MF_ROUGHNESS].val.x = val;
 		mtl->attr[MF_SHININESS].val.x = (1.0f - val) * 100.0f + 1.0f;
 	}
-	if((val = json_lookup_num(jmtl, "pbrMetallicRoughness.metallicFactor", -1.0)) >= 0) {
-		mtl->attr[MF_METALLIC].val.x = val;
-	}
+
+	mtl->attr[MF_METALLIC].val.x = json_lookup_num(jmtl, "pbrMetallicRoughness.metallicFactor", 1.0f);
+
 	if((jval = json_lookup(jmtl, "emissiveFactor"))) {
 		jval_to_vec(jval, &mtl->attr[MF_EMISSIVE].val);
 	}
 	if((jval = json_lookup(jmtl, "extensions.KHR_materials_specular.specularColorFactor"))) {
 		jval_to_vec(jval, &mtl->attr[MF_SPECULAR].val);
 	}
-	if((val = json_lookup_num(jmtl, "extensions.KHR_materials_ior.ior", -1.0)) >= 0) {
-		mtl->attr[MF_IOR].val.x = val;
-	}
+
+	mtl->attr[MF_IOR].val.x = json_lookup_num(jmtl, "extensions.KHR_materials_ior.ior", 1.5);
+
 	if((val = json_lookup_num(jmtl, "extensions.KHR_materials_transmission.transmissionFactor", -1.0)) >= 0) {
 		mtl->attr[MF_TRANSMIT].val.x = val;
 	}
@@ -1358,6 +1362,24 @@ static int get_texidx(struct gltf_file *gltf, const char *name)
 	return -1;	/* TODO */
 }
 
+static mf_vec3 vec3(float x, float y, float z)
+{
+	mf_vec3 v;
+	v.x = x;
+	v.y = y;
+	v.z = z;
+	return v;
+}
+
+static mf_vec4 vec4(float x, float y, float z, float w)
+{
+	mf_vec4 v;
+	v.x = x;
+	v.y = y;
+	v.z = z;
+	v.w = w;
+	return v;
+}
 
 static int jarr_to_vec4(struct json_arr *jarr, mf_vec4 *vec)
 {
