@@ -52,8 +52,10 @@ static float zoom_speed = 10.0f;
 static int wire, zup, use_tex = 1;
 static int use_nodes = 1;
 static int show_bounds;
+static int selobj = -1;
+static struct mf_mesh *selmesh;
 static int tex_modulate;
-static int dumptex;
+static int dumptex, dumpmtl;
 static struct mf_meshfile *mf;
 
 static long total_faces;
@@ -118,6 +120,18 @@ static int init(void)
 		mtl_init_texture(mtl, MF_COLOR);
 		mtl_init_texture(mtl, MF_EMISSIVE);
 		mtl_init_texture(mtl, MF_REFLECT);
+
+		if(dumpmtl) {
+			printf("Material %d: %s\n", i, mtl->name);
+			for(j=0; j<MF_NUM_MTLATTR; j++) {
+				printf("  %s: [%g %g %g %g]", attrstr[j], mtl->attr[j].val.x,
+						mtl->attr[j].val.y, mtl->attr[j].val.z, mtl->attr[j].val.w);
+				if(mtl->attr[j].map.name) {
+					printf(" map \"%s\"", mtl->attr[j].map.name);
+				}
+				putchar('\n');
+			}
+		}
 
 		if(dumptex) {
 			for(j=0; j<MF_NUM_MTLATTR; j++) {
@@ -265,7 +279,14 @@ static void draw_mesh(struct mf_mesh *m)
 		m->udata = (void*)dlist;
 	}
 
-	glCallList(dlist);
+	if(m == selmesh) {
+		glPushAttrib(GL_POLYGON_BIT);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		glCallList(dlist);
+		glPopAttrib();
+	} else {
+		glCallList(dlist);
+	}
 }
 
 static int pre_draw(struct mf_mesh *m, int pass)
@@ -495,6 +516,18 @@ static void keypress(unsigned char key, int x, int y)
 		zoom_speed = 10.0f;
 		break;
 
+	case '\t':
+		if(++selobj >= mf_num_meshes(mf)) {
+			selobj = -1;
+			selmesh = 0;
+		} else {
+			selmesh = mf_get_mesh(mf, selobj);
+			printf("mesh %d: %s\n", selobj, selmesh->name ? selmesh->name : "?");
+			printf("  mtl: %s\n", selmesh->mtl->name);
+		}
+		glutPostRedisplay();
+		break;
+
 	default:
 		break;
 	}
@@ -704,12 +737,15 @@ static int parse_args(int argc, char **argv)
 	static const char *usage_fmt = "Usage: %s [options] <mesh file>\n"
 		"Options:\n"
 		" -dumptex: dump embedded textures, if any\n"
+		" -dumpmtl: print material information\n"
 		" -h,-help: print usage and exit\n";
 
 	for(i=1; i<argc; i++) {
 		if(argv[i][0] == '-') {
 			if(strcmp(argv[i], "-dumptex") == 0) {
 				dumptex = 1;
+			} else if(strcmp(argv[i], "-dumpmtl") == 0) {
+				dumpmtl = 1;
 			} else if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-help") == 0) {
 				printf(usage_fmt, argv[0]);
 				exit(0);
