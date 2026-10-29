@@ -522,8 +522,8 @@ static void keypress(unsigned char key, int x, int y)
 			selmesh = 0;
 		} else {
 			selmesh = mf_get_mesh(mf, selobj);
-			printf("mesh %d: %s\n", selobj, selmesh->name ? selmesh->name : "?");
-			printf("  mtl: %s\n", selmesh->mtl->name);
+			printf("mesh %d: \"%s\"", selobj, selmesh->name ? selmesh->name : "?");
+			printf("  mtl: \"%s\"\n", selmesh->mtl->name);
 		}
 		glutPostRedisplay();
 		break;
